@@ -1,5 +1,7 @@
 #pragma once
 
+#include <unistd.h>
+
 #include <rte_ether.h>
 #include <rte_ethdev.h>
 
@@ -56,8 +58,10 @@ private:
 
     struct doca_flow_pipe_entry *rss_pipe_default_entry;
     struct doca_flow_pipe_entry *tx_root_pipe_default_entry;
+    struct doca_flow_pipe_entry *rx_root_pipe_default_entry;
 
     struct doca_flow_monitor monitor_count = {};
+    struct doca_flow_fwd fwd_drop = {};
 
     doca_error_t create_pipes();
     doca_error_t rss_pipe_create();
@@ -71,6 +75,9 @@ private:
     doca_error_t rx_ipsec_pipe_create();
     doca_error_t rx_vlan_pipe_create();
 
+    void print_pipe_entry_stats(struct doca_flow_pipe_entry* entry, std::string entry_name);
+    void print_pipe_stats(struct doca_flow_pipe* pipe, std::string pipe_name);
+
 public:
     PipeMgr();
     ~PipeMgr();
@@ -83,4 +90,6 @@ public:
 
         return create_pipes();
     }
+
+    void print_stats();
 };

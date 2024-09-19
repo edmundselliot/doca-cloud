@@ -44,6 +44,11 @@ doca_error_t OffloadApp::init() {
 doca_error_t OffloadApp::run() {
 	doca_error_t result = DOCA_SUCCESS;
 
+	while(1) {
+		pipe_mgr.print_stats();
+		sleep(1);
+	}
+
 	return result;
 }
 
