@@ -9,6 +9,7 @@
 #include <doca_dpdk.h>
 
 #include "control_path.h"
+#include "dpdk_utils.h"
 #include "utils.h"
 #include "common.h"
 
@@ -18,8 +19,15 @@ struct entries_status {
 	int entries_in_queue; /* number of entries in queue that is waiting to process */
 };
 
+struct cloud_app_cfg {
+    struct application_dpdk_config dpdk_cfg; //!< Configuration details of DPDK ports and queues
+	std::string core_mask; //!< EAL core mask
+};
+
 class OffloadApp {
 private:
+    struct cloud_app_cfg app_cfg;
+
     std::string pf_pci;
     std::string core_mask;
 
@@ -27,8 +35,8 @@ private:
     struct doca_flow_ip_addr pf_ip_addr;
     std::string pf_ip_addr_str;
 
-    struct doca_flow_port *pf;
-    struct doca_flow_port *vf;
+    struct doca_flow_port *pf_port;
+    struct doca_flow_port *vf_port;
 
     uint32_t pf_port_id;
     uint32_t vf_port_id;
@@ -50,6 +58,7 @@ private:
     doca_error_t init_doca_flow();
     doca_error_t init_dpdk();
     doca_error_t init_dev();
+    doca_error_t init_dpdk_queues_ports();
     doca_error_t start_port(uint16_t port_id, doca_dev *port_dev, doca_flow_port **port);
 
     static void check_for_valid_entry(doca_flow_pipe_entry *entry,

@@ -6,6 +6,17 @@ OffloadApp::OffloadApp(std::string pf_pci, std::string core_mask) {
     DOCA_LOG_INFO("Initializing offload app");
     this->pf_pci = pf_pci;
     this->core_mask = core_mask;
+
+	this->pf_port_id = 0;
+	this->vf_port_id = 1;
+
+	this->app_cfg.dpdk_cfg.port_config.nb_ports = 2;
+	this->app_cfg.dpdk_cfg.port_config.nb_queues = rte_lcore_count();
+	this->app_cfg.dpdk_cfg.port_config.nb_hairpin_q = 0;
+	this->app_cfg.dpdk_cfg.port_config.switch_mode = true;
+	this->app_cfg.dpdk_cfg.port_config.enable_mbuf_metadata = true;
+	this->app_cfg.dpdk_cfg.port_config.isolated_mode = true;
+	this->app_cfg.dpdk_cfg.reserve_main_thread = true;
 }
 
 OffloadApp::~OffloadApp() {
@@ -18,9 +29,23 @@ doca_error_t OffloadApp::init() {
     doca_error_t result = init_doca_flow();
     IF_SUCCESS(result, init_dpdk());
     IF_SUCCESS(result, init_dev());
-    // IF_SUCCESS(result, start_port(0, pf, ));
+	IF_SUCCESS(result, init_dpdk_queues_ports());
+    IF_SUCCESS(result, start_port(pf_port_id, pf_dev, &pf_port));
+    IF_SUCCESS(result, start_port(vf_port_id, NULL, &vf_port));
 
     return result;
+}
+
+doca_error_t OffloadApp::init_dpdk_queues_ports() {
+
+	doca_error_t result = dpdk_queues_and_ports_init(&app_cfg.dpdk_cfg);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to update application ports and queues: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	DOCA_LOG_INFO("DPDK ports and queues initialized");
+	return result;
 }
 
 doca_error_t OffloadApp::init_dpdk() {
@@ -57,7 +82,7 @@ doca_error_t OffloadApp::init_dev(void)
 	}
 
 	rte_eth_macaddr_get(pf_port_id, &pf_mac);
-	pf_ip_addr_str = mac_to_string(pf_mac);
+	pf_mac_str = mac_to_string(pf_mac);
 
 	rte_eth_macaddr_get(vf_port_id, &vf_repr_mac);
 	vf_repr_mac_str = mac_to_string(vf_repr_mac);
@@ -73,20 +98,22 @@ doca_error_t OffloadApp::init_dev(void)
     }
     pf_ip_addr_str = ip_to_string(pf_ip_addr);
 
-	DOCA_LOG_INFO("Probed PF %s, VF %s on PCI %s", pf_mac_str.c_str(), vf_repr_mac_str.c_str(), pf_pci.c_str());
+	DOCA_LOG_INFO("Probed PF %s, VF repr %s on PCI %s", pf_mac_str.c_str(), vf_repr_mac_str.c_str(), pf_pci.c_str());
+	DOCA_LOG_INFO("PF IP addr: %s", pf_ip_addr_str.c_str());
 	return result;
 }
 
 doca_error_t OffloadApp::start_port(uint16_t port_id, doca_dev *port_dev, doca_flow_port **port)
 {
 	doca_flow_port_cfg *port_cfg;
-	doca_error_t result = DOCA_SUCCESS;
-
-	IF_SUCCESS(result, doca_flow_port_cfg_create(&port_cfg));
-
 	std::string port_id_str = std::to_string(port_id); // note that set_devargs() clones the string contents
+
+	doca_error_t result = doca_flow_port_cfg_create(&port_cfg);
 	IF_SUCCESS(result, doca_flow_port_cfg_set_devargs(port_cfg, port_id_str.c_str()));
 	IF_SUCCESS(result, doca_flow_port_cfg_set_dev(port_cfg, port_dev));
+	if (port_dev) {
+		IF_SUCCESS(result, doca_flow_port_cfg_set_operation_state(port_cfg, DOCA_FLOW_PORT_OPERATION_STATE_ACTIVE));
+	}
 	IF_SUCCESS(result, doca_flow_port_start(port_cfg, port));
 	if (result == DOCA_SUCCESS)
 		DOCA_LOG_INFO("Started port_id %d", port_id);
