@@ -11,12 +11,14 @@ OffloadApp::OffloadApp(std::string pf_pci, std::string core_mask) {
 	this->vf_port_id = 1;
 
 	this->app_cfg.dpdk_cfg.port_config.nb_ports = 2;
-	this->app_cfg.dpdk_cfg.port_config.nb_queues = rte_lcore_count();
 	this->app_cfg.dpdk_cfg.port_config.nb_hairpin_q = 0;
 	this->app_cfg.dpdk_cfg.port_config.switch_mode = true;
 	this->app_cfg.dpdk_cfg.port_config.enable_mbuf_metadata = true;
 	this->app_cfg.dpdk_cfg.port_config.isolated_mode = true;
 	this->app_cfg.dpdk_cfg.reserve_main_thread = true;
+
+	// This is set after EAL init because it uses rte_lcore_count()
+	this->app_cfg.dpdk_cfg.port_config.nb_queues = -1;
 }
 
 OffloadApp::~OffloadApp() {
@@ -30,10 +32,19 @@ doca_error_t OffloadApp::init() {
     IF_SUCCESS(result, init_dpdk());
     IF_SUCCESS(result, init_dev());
 	IF_SUCCESS(result, init_dpdk_queues_ports());
+
     IF_SUCCESS(result, start_port(pf_port_id, pf_dev, &pf_port));
-    IF_SUCCESS(result, start_port(vf_port_id, NULL, &vf_port));
+    IF_SUCCESS(result, start_port(vf_port_id, nullptr, &vf_port));
+
+	pipe_mgr.init(pf_port, vf_port, pf_port_id, vf_port_id);
 
     return result;
+}
+
+doca_error_t OffloadApp::run() {
+	doca_error_t result = DOCA_SUCCESS;
+
+	return result;
 }
 
 doca_error_t OffloadApp::init_dpdk_queues_ports() {
@@ -60,6 +71,10 @@ doca_error_t OffloadApp::init_dpdk() {
 		}
 		return DOCA_ERROR_BAD_STATE;
 	}
+
+	// This can't be set until EAL init because it uses rte_lcore_count()
+	app_cfg.dpdk_cfg.port_config.nb_queues = rte_lcore_count();
+
     return DOCA_SUCCESS;
 }
 
@@ -164,7 +179,7 @@ void OffloadApp::check_for_valid_entry(doca_flow_pipe_entry *entry,
 
 	auto *entry_status = (entries_status *)user_ctx;
 
-	if (entry_status == NULL)
+	if (entry_status == nullptr)
 		return;
 
 	if (op != DOCA_FLOW_ENTRY_OP_ADD && op != DOCA_FLOW_ENTRY_OP_UPD)

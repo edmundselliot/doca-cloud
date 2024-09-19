@@ -8,6 +8,7 @@ common_dir_path = '/opt/mellanox/doca/applications/common'
 source_files = [
 	'src/main.cpp',
     'src/app.cpp',
+	'src/pipe_mgr.cpp',
     'src/control_path.cpp',
     'src/utils.cpp',
     samples_dir_path + '/common.c',

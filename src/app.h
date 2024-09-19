@@ -8,16 +8,12 @@
 #include <doca_log.h>
 #include <doca_dpdk.h>
 
-#include "control_path.h"
 #include "dpdk_utils.h"
 #include "utils.h"
 #include "common.h"
 
-struct entries_status {
-	bool failure;	      /* will be set to true if some entry status will not be success */
-	int nb_processed;     /* number of entries that was already processed */
-	int entries_in_queue; /* number of entries in queue that is waiting to process */
-};
+#include "control_path.h"
+#include "pipe_mgr.h"
 
 struct cloud_app_cfg {
     struct application_dpdk_config dpdk_cfg; //!< Configuration details of DPDK ports and queues
@@ -47,13 +43,7 @@ private:
     rte_ether_addr vf_repr_mac;
 
     ControlPath control_path = ControlPath();
-
-    // tx path
-    struct doca_flow_pipe *tx_root_pipe;
-    struct doca_flow_pipe *rss_pipe;
-    struct doca_flow_pipe *tx_geneve_pipe;
-    struct doca_flow_pipe *tx_ipsec_pipe;
-    struct doca_flow_pipe *tx_vlan_pipe;
+    PipeMgr pipe_mgr = PipeMgr();
 
     doca_error_t init_doca_flow();
     doca_error_t init_dpdk();
@@ -72,4 +62,5 @@ public:
     ~OffloadApp();
 
     doca_error_t init();
+    doca_error_t run();
 };

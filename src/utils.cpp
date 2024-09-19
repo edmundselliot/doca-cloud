@@ -1,5 +1,6 @@
 #include "utils.h"
 
+DOCA_LOG_REGISTER(UTILS);
 
 std::string mac_to_string(const rte_ether_addr &mac_addr)
 {
@@ -32,4 +33,43 @@ std::string ip_to_string(const struct doca_flow_ip_addr &ip_addr)
 	else if (ip_addr.type == DOCA_FLOW_L3_TYPE_IP6)
 		return ipv6_to_string(ip_addr.ipv6_addr);
 	return "Invalid IP type";
+}
+
+doca_error_t add_single_entry(uint16_t pipe_queue,
+						doca_flow_pipe *pipe,
+						doca_flow_port *port,
+						const doca_flow_match *match,
+						const doca_flow_actions *actions,
+						const doca_flow_monitor *mon,
+						const doca_flow_fwd *fwd,
+						doca_flow_pipe_entry **entry)
+{
+	int num_of_entries = 1;
+	uint32_t flags = DOCA_FLOW_NO_WAIT;
+
+	struct entries_status status = {};
+	status.entries_in_queue = num_of_entries;
+
+	doca_error_t result =
+		doca_flow_pipe_add_entry(pipe_queue, pipe, match, actions, mon, fwd, flags, &status, entry);
+
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to add entry: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	result = doca_flow_entries_process(port, 0, DEFAULT_TIMEOUT_US, num_of_entries);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to process entry: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	if (status.nb_processed != num_of_entries || status.failure) {
+		DOCA_LOG_ERR("Failed to process entry; nb_processed = %d, failure = %d",
+			     status.nb_processed,
+			     status.failure);
+		return DOCA_ERROR_BAD_STATE;
+	}
+
+	return result;
 }

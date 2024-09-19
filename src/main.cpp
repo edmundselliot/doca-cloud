@@ -1,6 +1,8 @@
 #include "main.h"
 #include "app.h"
 
+DOCA_LOG_REGISTER(MAIN);
+
 int main() {
     doca_error_t result;
 	struct doca_log_backend *sdk_log;
@@ -20,7 +22,17 @@ int main() {
 		return EXIT_FAILURE;
 
     OffloadApp app = OffloadApp("0000:8a:00.0", "0xf");
-    app.init();
+    result = app.init();
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to initialize offload app: %s", doca_error_get_descr(result));
+		return EXIT_FAILURE;
+	}
 
-    return 0;
+	result = app.run();
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to run offload app: %s", doca_error_get_descr(result));
+		return EXIT_FAILURE;
+	}
+
+    return EXIT_SUCCESS;
 }
