@@ -2,6 +2,7 @@
 
 #include <rte_ether.h>
 #include <rte_ethdev.h>
+#include <rte_lcore.h>
 
 #include <doca_dev.h>
 #include <doca_flow.h>
@@ -15,14 +16,16 @@
 #include "control_path.h"
 #include "pipe_mgr.h"
 
-struct cloud_app_cfg {
+#define BURST_SZ 64
+
+struct cloud_app_cfg_t {
     struct application_dpdk_config dpdk_cfg; //!< Configuration details of DPDK ports and queues
 	std::string core_mask; //!< EAL core mask
 };
 
 class OffloadApp {
 private:
-    struct cloud_app_cfg app_cfg;
+    struct cloud_app_cfg_t app_cfg;
 
     std::string pf_pci;
     std::string core_mask;
@@ -63,4 +66,12 @@ public:
 
     doca_error_t init();
     doca_error_t run();
+    doca_error_t handle_packet(struct rte_mbuf *pkt, uint32_t queue_id);
+};
+
+// Data that is unique to a worker thread
+struct worker_params_t {
+    uint32_t port_id;
+    uint32_t queue_id;
+    OffloadApp *app;
 };

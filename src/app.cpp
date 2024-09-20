@@ -41,17 +41,6 @@ doca_error_t OffloadApp::init() {
     return result;
 }
 
-doca_error_t OffloadApp::run() {
-	doca_error_t result = DOCA_SUCCESS;
-
-	while(1) {
-		pipe_mgr.print_stats();
-		sleep(1);
-	}
-
-	return result;
-}
-
 doca_error_t OffloadApp::init_dpdk_queues_ports() {
 
 	doca_error_t result = dpdk_queues_and_ports_init(&app_cfg.dpdk_cfg);
@@ -194,4 +183,59 @@ void OffloadApp::check_for_valid_entry(doca_flow_pipe_entry *entry,
 		entry_status->failure = true; /* set failure to true if processing failed */
 
 	entry_status->nb_processed++;
+}
+
+// This function can be executed in parallel by multiple worker threads!
+// Shared data access must be synchronized if needed
+doca_error_t OffloadApp::handle_packet(struct rte_mbuf *pkt, uint32_t queue_id) {
+	rte_pktmbuf_dump(stdout, pkt, pkt->pkt_len);
+
+	// Business logic for exception path packets
+
+	return DOCA_SUCCESS;
+}
+
+int worker_main(void *arg) {
+	worker_params_t *worker_cfg = (worker_params_t *)arg;
+	struct rte_mbuf *packets[BURST_SZ];
+
+	while(1) {
+		int nb_pkts = rte_eth_rx_burst(worker_cfg->port_id, worker_cfg->queue_id, packets, BURST_SZ);
+		if (nb_pkts == 0)
+			continue;
+
+		for (int i = 0; i < nb_pkts; i++) {
+			doca_error_t result = worker_cfg->app->handle_packet(packets[i], worker_cfg->queue_id);
+			if (result != DOCA_SUCCESS) {
+				DOCA_LOG_ERR("Failed to handle packet: %s", doca_error_get_descr(result));
+				continue;
+			}
+		}
+	}
+
+	delete worker_cfg;
+};
+
+doca_error_t OffloadApp::run() {
+	doca_error_t result = DOCA_SUCCESS;
+
+	uint32_t lcore_id;
+	uint32_t next_queue_id = 0;
+	RTE_LCORE_FOREACH_WORKER(lcore_id) {
+		DOCA_LOG_INFO("Starting worker lcore %u", lcore_id);
+
+		struct worker_params_t *worker_params = new worker_params_t();
+		worker_params->port_id = pf_port_id;
+		worker_params->queue_id = next_queue_id++;
+		worker_params->app = this;
+
+		rte_eal_remote_launch(worker_main, worker_params, lcore_id);
+	}
+
+	while(1) {
+		pipe_mgr.print_stats();
+		sleep(5);
+	}
+
+	return result;
 }
