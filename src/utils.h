@@ -34,6 +34,7 @@ std::string mac_to_string(const rte_ether_addr &mac_addr);
 std::string ipv4_to_string(rte_be32_t ipv4_addr);
 std::string ipv6_to_string(const uint32_t ipv6_addr[]);
 std::string ip_to_string(const struct doca_flow_ip_addr &ip_addr);
+uint32_t ipv4_string_to_u32(const std::string &ipv4_str);
 
 struct entries_status {
 	bool failure;	      /* will be set to true if some entry status will not be success */

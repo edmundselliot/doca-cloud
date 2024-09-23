@@ -35,6 +35,15 @@ std::string ip_to_string(const struct doca_flow_ip_addr &ip_addr)
 	return "Invalid IP type";
 }
 
+uint32_t ipv4_string_to_u32(const std::string &ipv4_str) {
+    struct in_addr addr;
+    if (inet_pton(AF_INET, ipv4_str.c_str(), &addr) != 1) {
+		DOCA_LOG_ERR("Failed to convert string %s to IPv4 address", ipv4_str.c_str());
+		assert(false);
+    }
+    return addr.s_addr;
+}
+
 doca_error_t add_single_entry(uint16_t pipe_queue,
 						doca_flow_pipe *pipe,
 						doca_flow_port *port,

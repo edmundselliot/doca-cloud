@@ -15,8 +15,9 @@ doca_error_t PipeMgr::create_pipes() {
     IF_SUCCESS(result, rss_pipe_create());
     IF_SUCCESS(result, tx_vlan_pipe_create());
 	IF_SUCCESS(result, tx_geneve_pipe_create());
+	IF_SUCCESS(result, rx_geneve_pipe_create());
     IF_SUCCESS(result, tx_root_pipe_create(tx_geneve_pipe));
-    IF_SUCCESS(result, rx_root_pipe_create(tx_root_pipe));
+    IF_SUCCESS(result, rx_root_pipe_create());
 
     if (result == DOCA_SUCCESS)
         DOCA_LOG_INFO("Created all static pipes on port %d", pf_port_id);
@@ -50,18 +51,26 @@ void PipeMgr::print_pipe_entry_stats(struct doca_flow_pipe_entry* entry, std::st
 
 void PipeMgr::print_stats() {
 	DOCA_LOG_INFO("=================================");
-	print_pipe_stats(rx_root_pipe, "RX_ROOT_PIPE");
-	print_pipe_entry_stats(rx_root_pipe_default_entry, "RX_ROOT_DEFAULT_ENTRY");
+	struct doca_flow_resource_query stats;;
+	doca_error_t result;
 
-    print_pipe_stats(tx_root_pipe, "TX_ROOT_PIPE");
-    print_pipe_entry_stats(tx_root_pipe_default_entry, "TX_ROOT_DEFAULT_ENTRY");
+	for (auto entry : monitored_pipe_entries) {
+		result = doca_flow_resource_query_entry(entry.second, &stats);
+        if (result == DOCA_SUCCESS)
+            DOCA_LOG_INFO("%s hit: %lu packets", entry.first.c_str(), stats.counter.total_pkts);
+		else
+            DOCA_LOG_ERR("Failed to query entry %s: %s", entry.first.c_str(), doca_error_get_descr(result));
+	}
 
-	print_pipe_stats(rss_pipe, "RSS_PIPE");
-    print_pipe_entry_stats(rss_pipe_default_entry, "RSS_PIPE_DEFAULT_ENTRY");
-
-	print_pipe_stats(tx_geneve_pipe, "TX_GENEVE_PIPE");
-    print_pipe_stats(tx_vlan_pipe, "TX_VLAN_PIPE");
+	for (auto pipe : monitored_pipe_misses) {
+		result = doca_flow_resource_query_pipe_miss(pipe.second, &stats);
+        if (result == DOCA_SUCCESS)
+            DOCA_LOG_INFO("%s miss: %lu pkts", pipe.first.c_str(), stats.counter.total_pkts);
+        else
+            DOCA_LOG_ERR("Failed to query pipe %s miss: %s", pipe.first.c_str(), doca_error_get_descr(result));
+	}
 }
+
 
 doca_error_t PipeMgr::rss_pipe_create() {
     assert(pf_port);
@@ -93,6 +102,9 @@ doca_error_t PipeMgr::rss_pipe_create() {
 		result,
 		add_single_entry(0, rss_pipe, pf_port, nullptr, nullptr, nullptr, nullptr, &rss_pipe_default_entry));
 
+	monitored_pipe_entries.push_back(std::make_pair("RSS_PIPE_DEFAULT_ENTRY", rss_pipe_default_entry));
+	monitored_pipe_misses.push_back(std::make_pair("RSS_PIPE", rss_pipe));
+
 	return result;
 }
 
@@ -117,6 +129,11 @@ doca_error_t PipeMgr::tx_vlan_pipe_create() {
     // TCI is defined per-entry
 	actions.push.vlan.vlan_hdr.tci = rte_cpu_to_be_16(0xffff);
 
+	// temp for testing!
+	struct doca_flow_fwd fwd_rss = {};
+	fwd_rss.type = DOCA_FLOW_FWD_PIPE;
+	fwd_rss.next_pipe = rss_pipe;
+
     struct doca_flow_pipe_cfg *pipe_cfg;
 	IF_SUCCESS(result, doca_flow_pipe_cfg_create(&pipe_cfg, pf_port));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_name(pipe_cfg, "TX_VLAN_PIPE"));
@@ -125,9 +142,11 @@ doca_error_t PipeMgr::tx_vlan_pipe_create() {
     IF_SUCCESS(result, doca_flow_pipe_cfg_set_actions(pipe_cfg, actions_arr, nullptr, nullptr, 1));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_dip, nullptr));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
-	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_to_wire, &fwd_drop, &tx_vlan_pipe));
+	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_to_wire, &fwd_rss /*temp put back to fwd_drop*/, &tx_vlan_pipe));
     if (pipe_cfg)
 		doca_flow_pipe_cfg_destroy(pipe_cfg);
+
+	monitored_pipe_misses.push_back(std::make_pair("TX_VLAN_PIPE", tx_vlan_pipe));
 
     return result;
 }
@@ -161,38 +180,47 @@ doca_error_t PipeMgr::tx_root_pipe_create(doca_flow_pipe *next_pipe) {
 		result,
 		add_single_entry(0, tx_root_pipe, pf_port, nullptr, nullptr, nullptr, nullptr, &tx_root_pipe_default_entry));
 
-
+	monitored_pipe_entries.push_back(std::make_pair("TX_ROOT_PIPE_DEFAULT_ENTRY", tx_root_pipe_default_entry));
+	monitored_pipe_misses.push_back(std::make_pair("TX_ROOT_PIPE", tx_root_pipe));
 
 	return result;
 }
 
-doca_error_t PipeMgr::rx_root_pipe_create(doca_flow_pipe *next_pipe) {
+doca_error_t PipeMgr::rx_root_pipe_create() {
     assert(pf_port);
-    assert(next_pipe);
+    assert(tx_root_pipe);
 
 	doca_error_t result = DOCA_SUCCESS;
 
-	struct doca_flow_match match_all = {};
+	struct doca_flow_match match_from_vf = {};
+	match_from_vf.parser_meta.port_meta = vf_port_id;
 
-	struct doca_flow_fwd fwd_pipe = {};
-	fwd_pipe.type = DOCA_FLOW_FWD_PIPE;
-	fwd_pipe.next_pipe = next_pipe;
+	struct doca_flow_fwd fwd_tx = {};
+	fwd_tx.type = DOCA_FLOW_FWD_PIPE;
+	fwd_tx.next_pipe = tx_root_pipe;
+
+	struct doca_flow_fwd fwd_rx = {};
+	fwd_rx.type = DOCA_FLOW_FWD_PIPE;
+	fwd_rx.next_pipe = rx_geneve_pipe;
 
 	struct doca_flow_pipe_cfg *pipe_cfg;
 	IF_SUCCESS(result, doca_flow_pipe_cfg_create(&pipe_cfg, pf_port));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_name(pipe_cfg, "RX_ROOT"));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_is_root(pipe_cfg, true));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_nr_entries(pipe_cfg, 1));
-	IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_all, nullptr));
+	IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_from_vf, nullptr));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_monitor(pipe_cfg, &monitor_count));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
-	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_pipe, &fwd_drop, &rx_root_pipe));
+	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_tx, &fwd_rx, &rx_root_pipe));
 	if (pipe_cfg)
 		doca_flow_pipe_cfg_destroy(pipe_cfg);
 
 	IF_SUCCESS(
 		result,
 		add_single_entry(0, rx_root_pipe, pf_port, nullptr, nullptr, nullptr, nullptr, &rx_root_pipe_default_entry));
+
+	monitored_pipe_entries.push_back(std::make_pair("RX_ROOT_PIPE_FROM_VF", rx_root_pipe_default_entry));
+	monitored_pipe_misses.push_back(std::make_pair("RX_ROOT_PIPE", rx_root_pipe));
 
 	return result;
 }
@@ -214,32 +242,29 @@ doca_error_t PipeMgr::tx_geneve_pipe_create()
 	fwd_rss.type = DOCA_FLOW_FWD_PIPE;
 	fwd_rss.next_pipe = rss_pipe;
 
-	struct doca_flow_header_format encap_pipe_action_outer_ipv4 = {};
-
 	struct doca_flow_actions actions = {};
 	actions.encap_type = DOCA_FLOW_RESOURCE_TYPE_NON_SHARED;
 	actions.encap_cfg.is_l2 = false;
-	actions.encap_cfg.encap.outer = encap_pipe_action_outer_ipv4;
 	actions.encap_cfg.encap.tun.type = DOCA_FLOW_TUN_GENEVE;
 	actions.encap_cfg.encap.tun.geneve.vni = 0xffffffff;
 	actions.encap_cfg.encap.tun.geneve.next_proto = UINT16_MAX;
+	rte_ether_addr_copy(&pf_mac, (struct rte_ether_addr *)&actions.encap_cfg.encap.outer.eth.src_mac);
 	for (int i = 0; i < 6; i++) {
-		actions.encap_cfg.encap.outer.eth.src_mac[i] = 0xff;
 		actions.encap_cfg.encap.outer.eth.dst_mac[i] = 0xff;
 	}
 	actions.encap_cfg.encap.outer.l3_type = DOCA_FLOW_L3_TYPE_IP4;
-	actions.encap_cfg.encap.outer.ip4.src_ip = UINT32_MAX;
-	actions.encap_cfg.encap.outer.ip4.dst_ip = UINT32_MAX;
+	actions.encap_cfg.encap.outer.ip4.src_ip = pf_pa;
 	actions.encap_cfg.encap.outer.ip4.ttl = UINT8_MAX;
 	actions.encap_cfg.encap.outer.l4_type_ext = DOCA_FLOW_L4_TYPE_EXT_UDP;
 	actions.encap_cfg.encap.outer.udp.l4_port.dst_port = RTE_BE16(DOCA_FLOW_GENEVE_DEFAULT_PORT);
+	actions.encap_cfg.encap.outer.ip4.dst_ip = UINT32_MAX;
 
 	struct doca_flow_actions *actions_ptr_arr[] = { &actions };
 
 	doca_error_t result = DOCA_SUCCESS;
 	struct doca_flow_pipe_cfg *pipe_cfg;
 	IF_SUCCESS(result, doca_flow_pipe_cfg_create(&pipe_cfg, pf_port));
-	IF_SUCCESS(result, doca_flow_pipe_cfg_set_name(pipe_cfg, "TX_GENEVE_PIPE"));
+	IF_SUCCESS(result, doca_flow_pipe_cfg_set_name(pipe_cfg, "GENEVE_ENCAP_PIPE"));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_domain(pipe_cfg, DOCA_FLOW_PIPE_DOMAIN_EGRESS));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_ca, NULL));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_actions(pipe_cfg, actions_ptr_arr, NULL, NULL, 1));
@@ -249,5 +274,105 @@ doca_error_t PipeMgr::tx_geneve_pipe_create()
 	if (pipe_cfg)
 		doca_flow_pipe_cfg_destroy(pipe_cfg);
 
+	monitored_pipe_misses.push_back(std::make_pair("GENEVE_ENCAP_PIPE", tx_geneve_pipe));
+
 	return result;
+}
+
+doca_error_t PipeMgr::tx_geneve_pipe_entry_create(geneve_encap_data_t *encap_data, struct doca_flow_pipe_entry** new_entry) {
+	struct doca_flow_match match_ca = {};
+	// TODO: this is matching all IPs and not just the remote_ca from encap_data. Debug this later.
+	match_ca.outer.ip4.dst_ip = encap_data->remote_ca;
+
+	struct doca_flow_actions actions = {};
+	actions.encap_type = DOCA_FLOW_RESOURCE_TYPE_NON_SHARED;
+	actions.encap_cfg.is_l2 = false;
+	actions.encap_cfg.encap.tun.type = DOCA_FLOW_TUN_GENEVE;
+	actions.encap_cfg.encap.tun.geneve.next_proto = UINT16_MAX;
+	rte_ether_addr_copy(&pf_mac, (struct rte_ether_addr *)&actions.encap_cfg.encap.outer.eth.src_mac);
+	actions.encap_cfg.encap.outer.l3_type = DOCA_FLOW_L3_TYPE_IP4;
+	actions.encap_cfg.encap.outer.ip4.src_ip = pf_pa;
+	actions.encap_cfg.encap.outer.ip4.ttl = UINT8_MAX;
+	actions.encap_cfg.encap.outer.l4_type_ext = DOCA_FLOW_L4_TYPE_EXT_UDP;
+	actions.encap_cfg.encap.outer.udp.l4_port.dst_port = RTE_BE16(DOCA_FLOW_GENEVE_DEFAULT_PORT);
+	actions.encap_cfg.encap.tun.geneve.next_proto = RTE_BE16(DOCA_FLOW_ETHER_TYPE_IPV4);
+	rte_ether_addr_copy(&encap_data->next_hop_mac, (struct rte_ether_addr *)&actions.encap_cfg.encap.outer.eth.dst_mac);
+	actions.encap_cfg.encap.outer.ip4.dst_ip = encap_data->remote_pa;
+	actions.encap_cfg.encap.tun.geneve.vni = encap_data->vni;
+
+	doca_error_t result = add_single_entry(0, tx_geneve_pipe, pf_port, &match_ca, &actions, NULL, NULL, new_entry);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to add entry to TX_GENEVE_PIPE: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	std::string entry_name = "TX_GENEVE_PIPE_ENTRY_" + ipv4_to_string(encap_data->remote_ca);
+	monitored_pipe_entries.push_back(std::make_pair(entry_name, *new_entry));
+
+	return DOCA_SUCCESS;
+}
+
+doca_error_t PipeMgr::rx_geneve_pipe_create() {
+	struct doca_flow_pipe_cfg *pipe_cfg;
+
+	struct doca_flow_match match = {};
+	match.parser_meta.outer_l3_type = DOCA_FLOW_L3_META_IPV4;
+	match.parser_meta.inner_l3_type = DOCA_FLOW_L3_META_IPV4;
+	match.tun.type = DOCA_FLOW_TUN_GENEVE;
+	match.tun.geneve.vni = UINT32_MAX;
+	match.inner.ip4.src_ip = UINT32_MAX;
+	match.outer.ip4.dst_ip = pf_pa;
+
+	struct doca_flow_fwd fwd_to_vf = {};
+	fwd_to_vf.type = DOCA_FLOW_FWD_PORT;
+	fwd_to_vf.port_id = vf_port_id;
+
+	struct doca_flow_actions decap_action = {};
+	decap_action.decap_type = DOCA_FLOW_RESOURCE_TYPE_NON_SHARED;
+	decap_action.decap_cfg.is_l2 = false;
+	decap_action.decap_cfg.eth.type = UINT16_MAX;
+	rte_ether_addr_copy(&pf_mac, (struct rte_ether_addr *)&decap_action.decap_cfg.eth.src_mac);
+	rte_ether_addr_copy(&vf_mac, (struct rte_ether_addr *)&decap_action.decap_cfg.eth.dst_mac);
+	struct doca_flow_actions *actions_arr[] = { &decap_action };
+
+	doca_error_t result = DOCA_SUCCESS;
+	IF_SUCCESS(result, doca_flow_pipe_cfg_create(&pipe_cfg, pf_port));
+	IF_SUCCESS(result, doca_flow_pipe_cfg_set_name(pipe_cfg, "GENEVE_DECAP_PIPE"));
+	IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match, NULL));
+	IF_SUCCESS(result, doca_flow_pipe_cfg_set_actions(pipe_cfg, actions_arr, actions_arr, NULL, 1));
+	IF_SUCCESS(result, doca_flow_pipe_cfg_set_monitor(pipe_cfg, &monitor_count));
+	IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
+	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_to_vf, &fwd_drop, &rx_geneve_pipe));
+	if (pipe_cfg)
+		doca_flow_pipe_cfg_destroy(pipe_cfg);
+
+	monitored_pipe_misses.push_back(std::make_pair("GENEVE_DECAP_PIPE", rx_geneve_pipe));
+
+	return result;
+}
+
+doca_error_t PipeMgr::rx_geneve_pipe_entry_create(geneve_decap_data_t *encap_data, struct doca_flow_pipe_entry** new_entry) {
+	struct doca_flow_match match_geneve = {};
+	match_geneve.parser_meta.outer_l3_type = DOCA_FLOW_L3_META_IPV4;
+	match_geneve.parser_meta.inner_l3_type = DOCA_FLOW_L3_META_IPV4;
+	match_geneve.tun.type = DOCA_FLOW_TUN_GENEVE;
+	match_geneve.tun.geneve.vni = encap_data->vni;
+	match_geneve.inner.ip4.src_ip = encap_data->remote_ca;
+	match_geneve.outer.ip4.dst_ip = pf_pa;
+
+	struct doca_flow_actions decap_action = {};
+	decap_action.decap_type = DOCA_FLOW_RESOURCE_TYPE_NON_SHARED;
+	decap_action.decap_cfg.is_l2 = false;
+	decap_action.decap_cfg.eth.type = UINT16_MAX;
+
+	doca_error_t result = add_single_entry(0, rx_geneve_pipe, pf_port, &match_geneve, &decap_action, NULL, NULL, new_entry);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to add entry to TX_GENEVE_PIPE: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	std::string entry_name = "RX_GENEVE_PIPE_ENTRY_" + ipv4_to_string(encap_data->remote_ca);
+	monitored_pipe_entries.push_back(std::make_pair(entry_name, *new_entry));
+
+	return DOCA_SUCCESS;
 }

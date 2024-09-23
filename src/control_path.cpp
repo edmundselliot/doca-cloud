@@ -6,8 +6,14 @@ ControlPath::ControlPath() {
     DOCA_LOG_INFO("Initializing control path");
 
     // ca <-> pa mappings for geneve pipe
-    ca_to_pa_mappings["60.0.0.65"] = "10.137.189.65";
-    ca_to_pa_mappings["60.0.0.66"] = "10.137.189.66";
+    ca_to_tnl_mappings["60.0.0.65"] = {
+        "100.0.0.65",
+        1234
+    };
+    ca_to_tnl_mappings["60.0.0.66"] = {
+        "100.0.0.66",
+        1234
+    };
 
     // pa <-> tnl mappings for ipsec pipe
     pa_to_tnl_mappings["10.137.189.65"] = "tnl1";

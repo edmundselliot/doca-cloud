@@ -2,10 +2,11 @@
 
 DOCA_LOG_REGISTER(OFFLOAD_APP);
 
-OffloadApp::OffloadApp(std::string pf_pci, std::string core_mask) {
+OffloadApp::OffloadApp(std::string pf_pci, std::string core_mask, rte_ether_addr vf_mac) {
     DOCA_LOG_INFO("Initializing offload app");
     this->pf_pci = pf_pci;
     this->core_mask = core_mask;
+	memcpy(&this->vf_mac, &vf_mac, sizeof(rte_ether_addr));
 
 	this->pf_port_id = 0;
 	this->vf_port_id = 1;
@@ -36,7 +37,7 @@ doca_error_t OffloadApp::init() {
     IF_SUCCESS(result, start_port(pf_port_id, pf_dev, &pf_port));
     IF_SUCCESS(result, start_port(vf_port_id, nullptr, &vf_port));
 
-	pipe_mgr.init(pf_port, vf_port, pf_port_id, vf_port_id);
+	pipe_mgr.init(pf_port, vf_port, pf_port_id, vf_port_id, pf_ip_addr.ipv4_addr, &pf_mac, &vf_mac);
 
     return result;
 }
@@ -75,8 +76,8 @@ doca_error_t OffloadApp::init_dpdk() {
 doca_error_t OffloadApp::init_dev(void)
 {
 	doca_error_t result = DOCA_SUCCESS;
-
-	std::string dev_probe_str = std::string("dv_flow_en=2,"	 // hardware steering
+	std::string dev_probe_str = std::string(
+		"dv_flow_en=2,"	 // hardware steering
 		"dv_xmeta_en=4,"	 // extended flow metadata support
 		"fdb_def_rule_en=0," // disable default root flow table rule
 		"vport_match=1,"
@@ -114,7 +115,7 @@ doca_error_t OffloadApp::init_dev(void)
 
 doca_error_t OffloadApp::start_port(uint16_t port_id, doca_dev *port_dev, doca_flow_port **port)
 {
-	doca_flow_port_cfg *port_cfg;
+	struct doca_flow_port_cfg *port_cfg;
 	std::string port_id_str = std::to_string(port_id); // note that set_devargs() clones the string contents
 
 	doca_error_t result = doca_flow_port_cfg_create(&port_cfg);
@@ -135,7 +136,7 @@ doca_error_t OffloadApp::start_port(uint16_t port_id, doca_dev *port_dev, doca_f
 doca_error_t OffloadApp::init_doca_flow(void)
 {
 	doca_error_t result = DOCA_SUCCESS;
-	uint16_t nb_queues = 2;
+	uint16_t nb_queues = 1;
 
 	uint16_t rss_queues[nb_queues];
 	for (int i = 0; i < nb_queues; i++)
@@ -185,13 +186,75 @@ void OffloadApp::check_for_valid_entry(doca_flow_pipe_entry *entry,
 	entry_status->nb_processed++;
 }
 
+doca_error_t OffloadApp::handle_arp(uint32_t port_id, uint32_t queue_id, struct rte_mbuf *arp_req_pkt) {
+	struct rte_ether_hdr *request_eth_hdr = rte_pktmbuf_mtod(arp_req_pkt, struct rte_ether_hdr *);
+	struct rte_arp_hdr *request_arp_hdr = (rte_arp_hdr *)&request_eth_hdr[1];
+
+	uint16_t arp_op = RTE_BE16(request_arp_hdr->arp_opcode);
+	if (arp_op != RTE_ARP_OP_REQUEST) {
+		DOCA_LOG_WARN("RSS ARP Handler: expected op %d, got %d", RTE_ARP_OP_REQUEST, arp_op);
+		return DOCA_SUCCESS;
+	}
+
+	struct rte_mbuf *response_pkt = rte_pktmbuf_alloc(app_cfg.dpdk_cfg.mbuf_pool);
+	if (!response_pkt) {
+		DOCA_LOG_ERR("Out of memory for ARP response packets; exiting");
+		return DOCA_ERROR_NO_MEMORY;
+	}
+
+	uint32_t pkt_size = sizeof(struct rte_ether_hdr) + sizeof(struct rte_arp_hdr);
+	response_pkt->data_len = pkt_size;
+	response_pkt->pkt_len = pkt_size;
+
+	struct rte_ether_hdr *response_eth_hdr = rte_pktmbuf_mtod(response_pkt, struct rte_ether_hdr *);
+	struct rte_arp_hdr *response_arp_hdr = (rte_arp_hdr *)&response_eth_hdr[1];
+
+	rte_eth_macaddr_get(port_id, &response_eth_hdr->src_addr);
+	response_eth_hdr->dst_addr = request_eth_hdr->src_addr;
+	response_eth_hdr->ether_type = RTE_BE16(DOCA_FLOW_ETHER_TYPE_ARP);
+
+	response_arp_hdr->arp_hardware = RTE_BE16(RTE_ARP_HRD_ETHER);
+	response_arp_hdr->arp_protocol = RTE_BE16(RTE_ETHER_TYPE_IPV4);
+	response_arp_hdr->arp_hlen = RTE_ETHER_ADDR_LEN;
+	response_arp_hdr->arp_plen = sizeof(uint32_t);
+	response_arp_hdr->arp_opcode = RTE_BE16(RTE_ARP_OP_REPLY);
+	rte_eth_macaddr_get(port_id, &response_arp_hdr->arp_data.arp_sha);
+	response_arp_hdr->arp_data.arp_tha = request_arp_hdr->arp_data.arp_sha;
+	response_arp_hdr->arp_data.arp_sip = request_arp_hdr->arp_data.arp_tip;
+	response_arp_hdr->arp_data.arp_tip = request_arp_hdr->arp_data.arp_sip;
+
+	// This ARP reply will go to the rx_root pipe.
+	rte_pktmbuf_dump(stdout, response_pkt, response_pkt->pkt_len);
+
+	uint16_t nb_tx_packets = rte_eth_tx_burst(port_id, queue_id, &response_pkt, 1);
+	if (nb_tx_packets != 1) {
+		DOCA_LOG_WARN("ARP reinject: rte_eth_tx_burst returned %d", nb_tx_packets);
+	}
+
+	char ip_addr_str[INET_ADDRSTRLEN];
+	inet_ntop(AF_INET, &request_arp_hdr->arp_data.arp_tip, ip_addr_str, INET_ADDRSTRLEN);
+	DOCA_LOG_DBG("Port %d replied to ARP request for IP %s", port_id, ip_addr_str);
+
+	return DOCA_SUCCESS;
+}
+
 // This function can be executed in parallel by multiple worker threads!
 // Shared data access must be synchronized if needed
 doca_error_t OffloadApp::handle_packet(struct rte_mbuf *pkt, uint32_t queue_id) {
-	rte_pktmbuf_dump(stdout, pkt, pkt->pkt_len);
+	struct rte_ether_hdr *eth_hdr = rte_pktmbuf_mtod(pkt, struct rte_ether_hdr *);
+	uint16_t ether_type = htons(eth_hdr->ether_type);
 
 	// Business logic for exception path packets
 
+	// arp packets
+	if (ether_type == DOCA_FLOW_ETHER_TYPE_ARP) {
+		handle_arp(pf_port_id, queue_id, pkt);
+	}
+
+	// need-geneve
+
+
+	rte_pktmbuf_dump(stdout, pkt, pkt->pkt_len);
 	return DOCA_SUCCESS;
 }
 
@@ -216,11 +279,53 @@ int worker_main(void *arg) {
 	delete worker_cfg;
 };
 
+doca_error_t OffloadApp::offload_static_flows() {
+	doca_error_t result = DOCA_SUCCESS;
+	struct doca_flow_pipe_entry *entry;
+
+	// For this test app, we are running on hosts:
+	// - host1: vf 60.0.0.65, pf 100.0.0.65
+	// - host2: vf 60.0.0.66, pf 100.0.0.66
+	// we will offload the flows for these in advance
+
+	geneve_encap_data_t geneve_encap_data = {};
+	geneve_encap_data.vni = 100;
+	geneve_encap_data.local_ca = ipv4_string_to_u32("60.0.0.65");
+	geneve_encap_data.remote_ca = ipv4_string_to_u32("60.0.0.66");
+	geneve_encap_data.remote_pa = ipv4_string_to_u32("100.0.0.66");
+	rte_ether_unformat_addr("aa:bb:cc:dd:ee:ff", &geneve_encap_data.next_hop_mac);
+	result = pipe_mgr.tx_geneve_pipe_entry_create(&geneve_encap_data, &entry);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create tx geneve pipe entry: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	geneve_decap_data_t geneve_decap_data = {};
+	geneve_decap_data.vni = 100;
+	geneve_decap_data.local_ca = ipv4_string_to_u32("60.0.0.65");
+	geneve_decap_data.remote_ca = ipv4_string_to_u32("60.0.0.66");
+	geneve_decap_data.remote_pa = ipv4_string_to_u32("100.0.0.66");
+	result = pipe_mgr.rx_geneve_pipe_entry_create(&geneve_decap_data, &entry);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create rx geneve pipe entry: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	return result;
+}
+
 doca_error_t OffloadApp::run() {
 	doca_error_t result = DOCA_SUCCESS;
 
 	uint32_t lcore_id;
 	uint32_t next_queue_id = 0;
+
+	result = offload_static_flows();
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to offload static flows: %s", doca_error_get_descr(result));
+		return result;
+	}
+
 	RTE_LCORE_FOREACH_WORKER(lcore_id) {
 		DOCA_LOG_INFO("Starting worker lcore %u", lcore_id);
 

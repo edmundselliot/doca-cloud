@@ -3,6 +3,7 @@
 #include <rte_ether.h>
 #include <rte_ethdev.h>
 #include <rte_lcore.h>
+#include <rte_arp.h>
 
 #include <doca_dev.h>
 #include <doca_flow.h>
@@ -25,9 +26,10 @@ struct cloud_app_cfg_t {
 
 class OffloadApp {
 private:
-    struct cloud_app_cfg_t app_cfg;
-
     std::string pf_pci;
+    rte_ether_addr vf_mac;
+
+    struct cloud_app_cfg_t app_cfg;
     std::string core_mask;
 
     struct doca_dev *pf_dev;
@@ -60,8 +62,11 @@ private:
             enum doca_flow_entry_op op,
             void *user_ctx);
 
+    doca_error_t handle_arp(uint32_t port_id, uint32_t queue_id, struct rte_mbuf *arp_req_pkt);
+    doca_error_t offload_static_flows();
+
 public:
-    OffloadApp(std::string pf_pci, std::string core_mask);
+    OffloadApp(std::string pf_pci, std::string core_mask, rte_ether_addr vf_mac);
     ~OffloadApp();
 
     doca_error_t init();
