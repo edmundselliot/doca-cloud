@@ -287,7 +287,7 @@ doca_error_t OffloadApp::create_geneve_tunnel(
 {
 	doca_error_t result = DOCA_SUCCESS;
 
-	geneve_encap_data_t geneve_encap_data = {};
+	geneve_encap_ctx_t geneve_encap_data = {};
 	geneve_encap_data.vni = vni;
 	// geneve_encap_data.local_ca = ipv4_string_to_u32(local_ca);
 	geneve_encap_data.remote_ca = ipv4_string_to_u32(remote_ca);
@@ -299,7 +299,7 @@ doca_error_t OffloadApp::create_geneve_tunnel(
 		return result;
 	}
 
-	geneve_decap_data_t geneve_decap_data = {};
+	geneve_decap_ctx_t geneve_decap_data = {};
 	geneve_decap_data.vni = vni;
 	geneve_decap_data.remote_ca = ipv4_string_to_u32(remote_ca);
 	result = pipe_mgr.rx_geneve_pipe_entry_create(&geneve_decap_data);
@@ -311,6 +311,21 @@ doca_error_t OffloadApp::create_geneve_tunnel(
 	return result;
 }
 
+
+doca_error_t OffloadApp::create_vlan_mapping(std::string remote_pa, uint16_t vlan_id) {
+	doca_error_t result = DOCA_SUCCESS;
+
+	struct vlan_push_ctx_t vlan_push_data = {};
+	vlan_push_data.dst_pa = ipv4_string_to_u32(remote_pa);
+	vlan_push_data.vlan_id = vlan_id;
+	result = pipe_mgr.tx_vlan_pipe_entry_create(&vlan_push_data);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create tx vlan pipe entry: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	return result;
+}
 
 doca_error_t OffloadApp::offload_static_flows() {
 	doca_error_t result = DOCA_SUCCESS;
@@ -324,6 +339,17 @@ doca_error_t OffloadApp::offload_static_flows() {
 		"100.0.0.66",
 		{0xde, 0xad, 0xbe, 0xef, 0x00, 0x02},
 		0x123);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create geneve tunnel: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	result = create_vlan_mapping("100.0.0.66", 100);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create vlan mapping: %s", doca_error_get_descr(result));
+		return result;
+	}
+
 
 	return result;
 }

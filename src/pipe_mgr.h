@@ -39,22 +39,20 @@
       wire tx             wire rx
 */
 
-struct geneve_encap_data_t {
+struct geneve_encap_ctx_t {
     uint32_t remote_ca;
     uint32_t remote_pa;
     rte_ether_addr next_hop_mac;
     uint32_t vni;
 };
 
-struct geneve_decap_data_t {
+struct geneve_decap_ctx_t {
     uint32_t remote_ca;
     uint32_t vni;
 };
 
-struct vlan_encap_data_t {
-    // If the packet matches these fields
+struct vlan_push_ctx_t {
     uint32_t dst_pa;
-    // Encap with these fields
     uint16_t vlan_id;
 };
 
@@ -84,6 +82,7 @@ private:
     struct doca_flow_pipe_entry *tx_root_pipe_default_entry;
     struct doca_flow_pipe_entry *rx_root_pipe_from_vf_entry;
     struct doca_flow_pipe_entry *rx_root_pipe_from_pf_entry;
+    struct doca_flow_pipe_entry *rx_vlan_pipe_default_entry;
 
     struct doca_flow_monitor monitor_count = {};
     struct doca_flow_fwd fwd_drop = {};
@@ -127,7 +126,7 @@ public:
 
     void print_stats();
 
-    doca_error_t tx_geneve_pipe_entry_create(struct geneve_encap_data_t *encap_data);
-    doca_error_t rx_geneve_pipe_entry_create(struct geneve_decap_data_t *decap_data);
-    doca_error_t tx_vlan_pipe_entry_create(uint32_t src_pa, uint32_t dst_pa);
+    doca_error_t tx_geneve_pipe_entry_create(struct geneve_encap_ctx_t *encap_ctx);
+    doca_error_t rx_geneve_pipe_entry_create(struct geneve_decap_ctx_t *decap_ctx);
+    doca_error_t tx_vlan_pipe_entry_create(struct vlan_push_ctx_t* push_ctx);
 };
