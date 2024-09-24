@@ -65,6 +65,8 @@ private:
     doca_error_t handle_arp(uint32_t port_id, uint32_t queue_id, struct rte_mbuf *arp_req_pkt);
     doca_error_t offload_static_flows();
 
+    doca_error_t create_geneve_tunnel(std::string remote_ca, std::string remote_pa, rte_ether_addr next_hop_mac, uint32_t vni);
+
 public:
     OffloadApp(std::string pf_pci, std::string core_mask, rte_ether_addr vf_mac);
     ~OffloadApp();

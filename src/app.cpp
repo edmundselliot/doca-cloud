@@ -279,37 +279,51 @@ int worker_main(void *arg) {
 	delete worker_cfg;
 };
 
-doca_error_t OffloadApp::offload_static_flows() {
+doca_error_t OffloadApp::create_geneve_tunnel(
+	std::string remote_ca,
+	std::string remote_pa,
+	rte_ether_addr next_hop_mac,
+	uint32_t vni)
+{
 	doca_error_t result = DOCA_SUCCESS;
-	struct doca_flow_pipe_entry *entry;
-
-	// For this test app, we are running on hosts:
-	// - host1: vf 60.0.0.65, pf 100.0.0.65
-	// - host2: vf 60.0.0.66, pf 100.0.0.66
-	// we will offload the flows for these in advance
 
 	geneve_encap_data_t geneve_encap_data = {};
-	geneve_encap_data.vni = 100;
-	geneve_encap_data.local_ca = ipv4_string_to_u32("60.0.0.65");
-	geneve_encap_data.remote_ca = ipv4_string_to_u32("60.0.0.66");
-	geneve_encap_data.remote_pa = ipv4_string_to_u32("100.0.0.66");
-	rte_ether_unformat_addr("aa:bb:cc:dd:ee:ff", &geneve_encap_data.next_hop_mac);
-	result = pipe_mgr.tx_geneve_pipe_entry_create(&geneve_encap_data, &entry);
+	geneve_encap_data.vni = vni;
+	// geneve_encap_data.local_ca = ipv4_string_to_u32(local_ca);
+	geneve_encap_data.remote_ca = ipv4_string_to_u32(remote_ca);
+	geneve_encap_data.remote_pa = ipv4_string_to_u32(remote_pa);
+	rte_ether_addr_copy(&next_hop_mac, &geneve_encap_data.next_hop_mac);
+	result = pipe_mgr.tx_geneve_pipe_entry_create(&geneve_encap_data);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to create tx geneve pipe entry: %s", doca_error_get_descr(result));
 		return result;
 	}
 
 	geneve_decap_data_t geneve_decap_data = {};
-	geneve_decap_data.vni = 100;
-	geneve_decap_data.local_ca = ipv4_string_to_u32("60.0.0.65");
-	geneve_decap_data.remote_ca = ipv4_string_to_u32("60.0.0.66");
-	geneve_decap_data.remote_pa = ipv4_string_to_u32("100.0.0.66");
-	result = pipe_mgr.rx_geneve_pipe_entry_create(&geneve_decap_data, &entry);
+	geneve_decap_data.vni = vni;
+	geneve_decap_data.remote_ca = ipv4_string_to_u32(remote_ca);
+	result = pipe_mgr.rx_geneve_pipe_entry_create(&geneve_decap_data);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to create rx geneve pipe entry: %s", doca_error_get_descr(result));
 		return result;
 	}
+
+	return result;
+}
+
+
+doca_error_t OffloadApp::offload_static_flows() {
+	doca_error_t result = DOCA_SUCCESS;
+
+	// For this test app, we are running on hosts:
+	// - host1: vf 60.0.0.65, pf 100.0.0.65
+	// - host2: vf 60.0.0.66, pf 100.0.0.66
+	// we will offload the flows for these in advance
+	result = create_geneve_tunnel(
+		"60.0.0.66",
+		"100.0.0.66",
+		{0xde, 0xad, 0xbe, 0xef, 0x00, 0x02},
+		0x123);
 
 	return result;
 }

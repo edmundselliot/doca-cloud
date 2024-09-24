@@ -41,21 +41,21 @@
 
 struct geneve_encap_data_t {
     uint32_t remote_ca;
-    uint32_t local_ca;
     uint32_t remote_pa;
-    uint32_t local_pa;
     rte_ether_addr next_hop_mac;
-
     uint32_t vni;
 };
 
 struct geneve_decap_data_t {
     uint32_t remote_ca;
-    uint32_t local_ca;
-    uint32_t remote_pa;
-    uint32_t local_pa;
-
     uint32_t vni;
+};
+
+struct vlan_encap_data_t {
+    // If the packet matches these fields
+    uint32_t dst_pa;
+    // Encap with these fields
+    uint16_t vlan_id;
 };
 
 class PipeMgr {
@@ -127,7 +127,7 @@ public:
 
     void print_stats();
 
-    doca_error_t tx_geneve_pipe_entry_create(struct geneve_encap_data_t *encap_data, struct doca_flow_pipe_entry **new_entry);
-    doca_error_t rx_geneve_pipe_entry_create(struct geneve_decap_data_t *decap_data, struct doca_flow_pipe_entry **new_entry);
-    doca_error_t tx_vlan_pipe_entry_create(uint32_t src_pa, uint32_t dst_pa, struct doca_flow_pipe_entry **new_entry);
+    doca_error_t tx_geneve_pipe_entry_create(struct geneve_encap_data_t *encap_data);
+    doca_error_t rx_geneve_pipe_entry_create(struct geneve_decap_data_t *decap_data);
+    doca_error_t tx_vlan_pipe_entry_create(uint32_t src_pa, uint32_t dst_pa);
 };
