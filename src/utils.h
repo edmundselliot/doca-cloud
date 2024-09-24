@@ -30,6 +30,8 @@
 #define unlikely(x) (x)
 #endif
 
+#define BUILD_VNI(uint24_vni) (RTE_BE32((uint32_t)uint24_vni << 8))		/* create VNI */
+
 std::string mac_to_string(const rte_ether_addr &mac_addr);
 std::string ipv4_to_string(rte_be32_t ipv4_addr);
 std::string ipv6_to_string(const uint32_t ipv6_addr[]);

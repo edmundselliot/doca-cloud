@@ -82,10 +82,12 @@ private:
 
     struct doca_flow_pipe_entry *rss_pipe_default_entry;
     struct doca_flow_pipe_entry *tx_root_pipe_default_entry;
-    struct doca_flow_pipe_entry *rx_root_pipe_default_entry;
+    struct doca_flow_pipe_entry *rx_root_pipe_from_vf_entry;
+    struct doca_flow_pipe_entry *rx_root_pipe_from_pf_entry;
 
     struct doca_flow_monitor monitor_count = {};
     struct doca_flow_fwd fwd_drop = {};
+    struct doca_flow_fwd fwd_rss = {};
 	struct doca_flow_actions geneve_encap_actions = {};
 
     doca_error_t create_pipes();
