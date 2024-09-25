@@ -52,18 +52,22 @@ private:
     doca_error_t init_dpdk_queues_ports();
     doca_error_t start_port(uint16_t port_id, doca_dev *port_dev, doca_flow_port **port);
 
-    static void check_for_valid_entry(doca_flow_pipe_entry *entry,
-            uint16_t pipe_queue,
-            enum doca_flow_entry_status status,
-            enum doca_flow_entry_op op,
-            void *user_ctx);
+    static void check_for_valid_entry(
+        doca_flow_pipe_entry *entry,
+        uint16_t pipe_queue,
+        enum doca_flow_entry_status status,
+        enum doca_flow_entry_op op,
+        void *user_ctx);
 
     doca_error_t handle_arp(uint32_t port_id, uint32_t queue_id, struct rte_mbuf *arp_req_pkt);
     doca_error_t offload_static_flows();
 
     doca_error_t create_geneve_tunnel(std::string remote_ca, std::string remote_pa, rte_ether_addr next_hop_mac, uint32_t vni);
     doca_error_t create_vlan_mapping(std::string remote_pa, uint16_t vlan);
-    doca_error_t create_ipsec_tunnel(std::string remote_pa, uint32_t spi, uint8_t *enc_key_data, uint32_t enc_key_len);
+    doca_error_t create_ipsec_tunnel(
+        std::string remote_pa,
+        uint32_t enc_spi, uint8_t *enc_key_data, uint32_t enc_key_len,
+        uint32_t dec_spi, uint8_t *dec_key_data, uint32_t dec_key_len);
 
 public:
     OffloadApp(std::string pf_pci, std::string core_mask, rte_ether_addr vf_mac);

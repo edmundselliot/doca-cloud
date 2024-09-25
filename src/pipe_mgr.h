@@ -63,14 +63,14 @@ struct vlan_push_ctx_t {
 struct ipsec_ctx_t {
     uint32_t remote_pa;
     uint32_t spi;
-    uint8_t enc_key_data[MAX_IPSEC_KEY_LEN];
+    uint8_t key[MAX_IPSEC_KEY_LEN];
     uint32_t key_len_bytes;
 };
 
 struct ipsec_sa_ctx_t {
 	enum doca_flow_crypto_icv_len icv_length; /* ICV length */
 	enum doca_flow_crypto_key_type key_type; /* Key type */
-	uint8_t enc_key_data[MAX_IPSEC_KEY_LEN]; /* Policy encryption key */
+	uint8_t key[MAX_IPSEC_KEY_LEN]; /* Policy encryption key */
 	uint32_t salt; /* Key Salt */
 	uint32_t lifetime_threshold; /* SA lifetime threshold */
 	bool esn_en; /* If extended sn is enable*/
@@ -112,7 +112,7 @@ private:
 	struct doca_flow_actions geneve_encap_actions = {};
 
     struct ipsec_sa_ctx_t dummy_encap_decap_sa_ctx = {};
-    uint32_t dummy_encap_crypto_id;;
+    uint32_t dummy_encap_crypto_id;
     uint32_t dummy_decap_crypto_id;
 
     std::vector<std::pair<std::string, struct doca_flow_pipe_entry*>> monitored_pipe_entries = {};
@@ -131,13 +131,11 @@ private:
     doca_error_t rx_ipsec_pipe_create();
     doca_error_t rx_vlan_pipe_create();
 
-    void print_pipe_entry_stats(struct doca_flow_pipe_entry* entry, std::string entry_name);
-    void print_pipe_stats(struct doca_flow_pipe* pipe, std::string pipe_name);
-
     doca_error_t get_available_ipsec_sa_idx(uint32_t *sa_idx);
-    doca_error_t create_ipsec_sa(struct ipsec_sa_ctx_t *ipsec_sa_ctx, uint32_t sa_idx);
+    doca_error_t create_ipsec_sa(struct ipsec_sa_ctx_t *ipsec_sa_ctx, uint32_t sa_idx, bool egress);
     doca_error_t bind_ipsec_sa_ids();
     doca_error_t tx_ipsec_pipe_entry_create(uint32_t remote_pa, uint32_t spi, uint32_t sa_idx);
+    doca_error_t rx_ipsec_pipe_entry_create(uint32_t remote_pa, uint32_t spi, uint32_t sa_idx);
 
 public:
     PipeMgr();
@@ -157,6 +155,7 @@ public:
     doca_error_t rx_geneve_pipe_entry_create(struct geneve_decap_ctx_t *decap_ctx);
     doca_error_t tx_vlan_pipe_entry_create(struct vlan_push_ctx_t* vlan_ctx);
     doca_error_t tx_ipsec_session_create(struct ipsec_ctx_t* ipsec_ctx);
+    doca_error_t rx_ipsec_session_create(struct ipsec_ctx_t* ipsec_ctx);
 
     void print_stats();
 };
