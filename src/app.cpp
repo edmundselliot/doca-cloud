@@ -332,6 +332,22 @@ doca_error_t OffloadApp::create_vlan_mapping(std::string remote_pa, uint16_t vla
 	return result;
 }
 
+doca_error_t OffloadApp::create_ipsec_tunnel(std::string remote_pa, uint32_t spi, uint8_t *enc_key_data, uint32_t enc_key_len) {
+	struct ipsec_ctx_t egress_ipsec_ctx = {};
+	egress_ipsec_ctx.remote_pa = ipv4_string_to_u32(remote_pa);
+	egress_ipsec_ctx.spi = spi;
+	memcpy(egress_ipsec_ctx.enc_key_data, enc_key_data, enc_key_len);
+	egress_ipsec_ctx.key_len_bytes = enc_key_len;
+
+	doca_error_t result = pipe_mgr.tx_ipsec_session_create(&egress_ipsec_ctx);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create tx ipsec pipe entry: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	return DOCA_SUCCESS;
+}
+
 doca_error_t OffloadApp::offload_static_flows() {
 	doca_error_t result = DOCA_SUCCESS;
 
@@ -355,6 +371,11 @@ doca_error_t OffloadApp::offload_static_flows() {
 		return result;
 	}
 
+	result = create_ipsec_tunnel("100.0.0.66", 0x123, (uint8_t *)"0123456789abcdef", 16);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create ipsec tunnel: %s", doca_error_get_descr(result));
+		return result;
+	}
 
 	return result;
 }

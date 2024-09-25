@@ -63,7 +63,8 @@ struct vlan_push_ctx_t {
 struct ipsec_ctx_t {
     uint32_t remote_pa;
     uint32_t spi;
-    uint32_t crypto_id;
+    uint8_t enc_key_data[MAX_IPSEC_KEY_LEN];
+    uint32_t key_len_bytes;
 };
 
 struct ipsec_sa_ctx_t {
@@ -136,6 +137,7 @@ private:
     doca_error_t get_available_ipsec_sa_idx(uint32_t *sa_idx);
     doca_error_t create_ipsec_sa(struct ipsec_sa_ctx_t *ipsec_sa_ctx, uint32_t sa_idx);
     doca_error_t bind_ipsec_sa_ids();
+    doca_error_t tx_ipsec_pipe_entry_create(uint32_t remote_pa, uint32_t spi, uint32_t sa_idx);
 
 public:
     PipeMgr();
@@ -154,7 +156,7 @@ public:
     doca_error_t tx_geneve_pipe_entry_create(struct geneve_encap_ctx_t *encap_ctx);
     doca_error_t rx_geneve_pipe_entry_create(struct geneve_decap_ctx_t *decap_ctx);
     doca_error_t tx_vlan_pipe_entry_create(struct vlan_push_ctx_t* vlan_ctx);
-    doca_error_t tx_ipsec_pipe_entry_create(struct ipsec_ctx_t* ipsec_ctx);
+    doca_error_t tx_ipsec_session_create(struct ipsec_ctx_t* ipsec_ctx);
 
     void print_stats();
 };

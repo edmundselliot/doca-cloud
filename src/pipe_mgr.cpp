@@ -561,14 +561,36 @@ doca_error_t PipeMgr::tx_ipsec_pipe_create() {
 	return result;
 }
 
-doca_error_t PipeMgr::tx_ipsec_pipe_entry_create(struct ipsec_ctx_t *ipsec_ctx) {
+doca_error_t PipeMgr::tx_ipsec_session_create(struct ipsec_ctx_t *ipsec_ctx) {
+	doca_error_t result = DOCA_SUCCESS;
+
+	// Get an available SA idx
+	uint32_t sa_idx;
+	IF_SUCCESS(result, get_available_ipsec_sa_idx(&sa_idx));
+
+	// Put the key in the new SA idx
+	struct ipsec_sa_ctx_t ipsec_sa_ctx = {};
+	ipsec_sa_ctx.icv_length = DOCA_FLOW_CRYPTO_ICV_LENGTH_8;
+	ipsec_sa_ctx.key_type = DOCA_FLOW_CRYPTO_KEY_256;
+	memcpy(&ipsec_sa_ctx.enc_key_data, ipsec_ctx->enc_key_data, sizeof(ipsec_ctx->enc_key_data));
+	ipsec_sa_ctx.salt = 0x12345678;
+	ipsec_sa_ctx.esn_en = false;
+	IF_SUCCESS(result, create_ipsec_sa(&ipsec_sa_ctx, sa_idx));
+
+	// Create the entry with the new SA idx
+	IF_SUCCESS(result, tx_ipsec_pipe_entry_create(ipsec_ctx->remote_pa, ipsec_ctx->spi, sa_idx));
+
+	return result;
+}
+
+doca_error_t PipeMgr::tx_ipsec_pipe_entry_create(uint32_t remote_pa, uint32_t spi, uint32_t sa_idx) {
 	struct doca_flow_pipe_entry *new_entry;
 
 	uint8_t reformat_encap_data[16] = {
-		GET_BYTE(ipsec_ctx->spi, 3),
-		GET_BYTE(ipsec_ctx->spi, 2),
-		GET_BYTE(ipsec_ctx->spi, 1),
-		GET_BYTE(ipsec_ctx->spi, 0),
+		GET_BYTE(spi, 3),
+		GET_BYTE(spi, 2),
+		GET_BYTE(spi, 1),
+		GET_BYTE(spi, 0),
 		0,0,0,0,
 		0,0,0,0,
 		0,0,0,0
@@ -576,11 +598,11 @@ doca_error_t PipeMgr::tx_ipsec_pipe_entry_create(struct ipsec_ctx_t *ipsec_ctx) 
 
 	struct doca_flow_match match_remote_pa = {};
 	match_remote_pa.parser_meta.outer_l3_type = DOCA_FLOW_L3_META_IPV4;
-	match_remote_pa.outer.ip4.dst_ip = ipsec_ctx->remote_pa;
+	match_remote_pa.outer.ip4.dst_ip = remote_pa;
 
 	struct doca_flow_actions actions = {};
 	actions.has_crypto_encap = true;
-	actions.crypto.crypto_id = ipsec_ctx->crypto_id;
+	actions.crypto.crypto_id = sa_idx;
 	memcpy(&actions.crypto_encap.encap_data, reformat_encap_data, sizeof(reformat_encap_data));
 	actions.crypto_encap.data_size = sizeof(reformat_encap_data);
 	actions.crypto_encap.icv_size = DOCA_FLOW_CRYPTO_ICV_LENGTH_8; // TODO: is this right
@@ -591,8 +613,7 @@ doca_error_t PipeMgr::tx_ipsec_pipe_entry_create(struct ipsec_ctx_t *ipsec_ctx) 
 		return result;
 	}
 
-	std::string entry_name = "TX_IPSEC_PIPE_ENTRY_" + ipv4_to_string(ipsec_ctx->remote_pa);
-
+	std::string entry_name = "TX_IPSEC_PIPE_ENTRY_" + ipv4_to_string(remote_pa);
 	return DOCA_SUCCESS;
 }
 
@@ -625,6 +646,8 @@ doca_error_t PipeMgr::create_ipsec_sa(struct ipsec_sa_ctx_t *ipsec_sa_ctx, uint3
 		DOCA_LOG_ERR("Failed to cfg shared ipsec object: %s", doca_error_get_descr(result));
 		return result;
 	}
+	memset(ipsec_sa_ctx->enc_key_data, 0, sizeof(ipsec_sa_ctx->enc_key_data));
+
 
 	DOCA_LOG_INFO("Created ipsec sa with crypto_id %d", crypto_id);
 	return DOCA_SUCCESS;

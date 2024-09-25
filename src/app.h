@@ -63,6 +63,7 @@ private:
 
     doca_error_t create_geneve_tunnel(std::string remote_ca, std::string remote_pa, rte_ether_addr next_hop_mac, uint32_t vni);
     doca_error_t create_vlan_mapping(std::string remote_pa, uint16_t vlan);
+    doca_error_t create_ipsec_tunnel(std::string remote_pa, uint32_t spi, uint8_t *enc_key_data, uint32_t enc_key_len);
 
 public:
     OffloadApp(std::string pf_pci, std::string core_mask, rte_ether_addr vf_mac);
