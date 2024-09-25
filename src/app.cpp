@@ -22,7 +22,7 @@ OffloadApp::OffloadApp(std::string pf_pci, std::string core_mask, rte_ether_addr
 	this->app_cfg.dpdk_cfg.port_config.nb_queues = -1;
 
 	// Note: 2 reserved SAs for dummy encap/decap
-	this->app_cfg.max_ipsec_sessions = 4096 + 2;
+	this->app_cfg.max_ipsec_sessions = 4096;
 }
 
 OffloadApp::~OffloadApp() {
@@ -156,7 +156,7 @@ doca_error_t OffloadApp::init_doca_flow(void)
 	IF_SUCCESS(result, doca_flow_cfg_set_queue_depth(flow_cfg, 128));
 	IF_SUCCESS(result, doca_flow_cfg_set_nr_counters(flow_cfg, 1024));
 	IF_SUCCESS(result, doca_flow_cfg_set_nr_shared_resource(
-		flow_cfg, app_cfg.max_ipsec_sessions, DOCA_FLOW_SHARED_RESOURCE_IPSEC_SA));
+		flow_cfg, app_cfg.max_ipsec_sessions + 2, DOCA_FLOW_SHARED_RESOURCE_IPSEC_SA));
 	IF_SUCCESS(result, doca_flow_cfg_set_mode_args(flow_cfg, "switch,hws"));
 	IF_SUCCESS(result, doca_flow_cfg_set_cb_entry_process(flow_cfg, OffloadApp::check_for_valid_entry));
 	IF_SUCCESS(result, doca_flow_cfg_set_default_rss(flow_cfg, &rss_config));

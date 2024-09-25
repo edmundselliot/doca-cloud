@@ -111,7 +111,7 @@ private:
 	struct doca_flow_actions geneve_encap_actions = {};
 
     struct ipsec_sa_ctx_t dummy_encap_decap_sa_ctx = {};
-    uint32_t dummy_encap_crypto_id;
+    uint32_t dummy_encap_crypto_id;;
     uint32_t dummy_decap_crypto_id;
 
     std::vector<std::pair<std::string, struct doca_flow_pipe_entry*>> monitored_pipe_entries = {};
@@ -133,15 +133,9 @@ private:
     void print_pipe_entry_stats(struct doca_flow_pipe_entry* entry, std::string entry_name);
     void print_pipe_stats(struct doca_flow_pipe* pipe, std::string pipe_name);
 
-    doca_error_t create_ipsec_sa(struct ipsec_sa_ctx_t *ipsec_sa_ctx, uint32_t *sa_idx);
-    doca_error_t get_available_ipsec_sa_idx(uint32_t *sa_idx) {
-        if (ipsec_sa_idxs.empty())
-            return DOCA_ERROR_NO_MEMORY;
-
-        *sa_idx = *ipsec_sa_idxs.begin();
-        ipsec_sa_idxs.erase(*ipsec_sa_idxs.begin());
-        return DOCA_SUCCESS;
-    }
+    doca_error_t get_available_ipsec_sa_idx(uint32_t *sa_idx);
+    doca_error_t create_ipsec_sa(struct ipsec_sa_ctx_t *ipsec_sa_ctx, uint32_t sa_idx);
+    doca_error_t bind_ipsec_sa_ids();
 
 public:
     PipeMgr();
