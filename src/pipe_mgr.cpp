@@ -9,7 +9,17 @@ PipeMgr::PipeMgr() {
 
 PipeMgr::~PipeMgr() {}
 
-doca_error_t PipeMgr::init(doca_flow_port *pf_port, doca_flow_port *vf_port, uint32_t pf_port_id, uint32_t vf_port_id, uint32_t pf_pa, rte_ether_addr *pf_mac, rte_ether_addr *vf_mac) {
+doca_error_t PipeMgr::init(
+	struct cloud_app_cfg_t *app_cfg,
+	struct doca_flow_port *pf_port,
+	struct doca_flow_port *vf_port,
+	uint32_t pf_port_id,
+	uint32_t vf_port_id,
+	uint32_t pf_pa,
+	rte_ether_addr *pf_mac,
+	rte_ether_addr *vf_mac)
+{
+	this->app_cfg = app_cfg;
 	this->pf_port_id = pf_port_id;
 	this->vf_port_id = vf_port_id;
 	this->pf_port = pf_port;
@@ -19,7 +29,7 @@ doca_error_t PipeMgr::init(doca_flow_port *pf_port, doca_flow_port *vf_port, uin
 	rte_ether_addr_copy(pf_mac, &this->pf_mac);
 	rte_ether_addr_copy(vf_mac, &this->vf_mac);
 
-	for (uint32_t i = 1; i <= 4096; ++i) {
+	for (uint32_t i = 0; i <= app_cfg->max_ipsec_sessions; ++i) {
 		ipsec_sa_idxs.insert(i);
 	}
 	dummy_encap_decap_sa_ctx.icv_length = DOCA_FLOW_CRYPTO_ICV_LENGTH_16;

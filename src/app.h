@@ -16,13 +16,9 @@
 
 #include "control_path.h"
 #include "pipe_mgr.h"
+#include "main.h"
 
 #define BURST_SZ 64
-
-struct cloud_app_cfg_t {
-    struct application_dpdk_config dpdk_cfg; //!< Configuration details of DPDK ports and queues
-	std::string core_mask; //!< EAL core mask
-};
 
 class OffloadApp {
 private:

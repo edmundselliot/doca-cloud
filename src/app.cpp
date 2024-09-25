@@ -20,6 +20,9 @@ OffloadApp::OffloadApp(std::string pf_pci, std::string core_mask, rte_ether_addr
 
 	// This is set after EAL init because it uses rte_lcore_count()
 	this->app_cfg.dpdk_cfg.port_config.nb_queues = -1;
+
+	// Note: 2 reserved SAs for dummy encap/decap
+	this->app_cfg.max_ipsec_sessions = 4096 + 2;
 }
 
 OffloadApp::~OffloadApp() {
@@ -37,7 +40,7 @@ doca_error_t OffloadApp::init() {
     IF_SUCCESS(result, start_port(pf_port_id, pf_dev, &pf_port));
     IF_SUCCESS(result, start_port(vf_port_id, nullptr, &vf_port));
 
-	pipe_mgr.init(pf_port, vf_port, pf_port_id, vf_port_id, pf_ip_addr.ipv4_addr, &pf_mac, &vf_mac);
+	pipe_mgr.init(&app_cfg, pf_port, vf_port, pf_port_id, vf_port_id, pf_ip_addr.ipv4_addr, &pf_mac, &vf_mac);
 
     return result;
 }
@@ -152,7 +155,8 @@ doca_error_t OffloadApp::init_doca_flow(void)
     IF_SUCCESS(result, doca_flow_cfg_set_pipe_queues(flow_cfg, nb_queues));
 	IF_SUCCESS(result, doca_flow_cfg_set_queue_depth(flow_cfg, 128));
 	IF_SUCCESS(result, doca_flow_cfg_set_nr_counters(flow_cfg, 1024));
-	IF_SUCCESS(result, doca_flow_cfg_set_nr_shared_resource(flow_cfg, 8192, DOCA_FLOW_SHARED_RESOURCE_IPSEC_SA));
+	IF_SUCCESS(result, doca_flow_cfg_set_nr_shared_resource(
+		flow_cfg, app_cfg.max_ipsec_sessions, DOCA_FLOW_SHARED_RESOURCE_IPSEC_SA));
 	IF_SUCCESS(result, doca_flow_cfg_set_mode_args(flow_cfg, "switch,hws"));
 	IF_SUCCESS(result, doca_flow_cfg_set_cb_entry_process(flow_cfg, OffloadApp::check_for_valid_entry));
 	IF_SUCCESS(result, doca_flow_cfg_set_default_rss(flow_cfg, &rss_config));

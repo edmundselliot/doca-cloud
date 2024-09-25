@@ -12,6 +12,7 @@
 #include <doca_dpdk.h>
 
 #include "utils.h"
+#include "main.h"
 
 #define MAX_IPSEC_KEY_LEN (32)			  /* Maximal GCM key size is 256bit==32B */
 
@@ -76,6 +77,8 @@ struct ipsec_sa_ctx_t {
 
 class PipeMgr {
 private:
+    struct cloud_app_cfg_t *app_cfg;
+
     uint32_t pf_port_id;
     struct doca_flow_port *pf_port;
     uint32_t vf_port_id;
@@ -144,12 +147,20 @@ public:
     PipeMgr();
     ~PipeMgr();
 
-    doca_error_t init(doca_flow_port *pf_port, doca_flow_port *vf_port, uint32_t pf_port_id, uint32_t vf_port_id, uint32_t pf_pa, rte_ether_addr *pf_mac, rte_ether_addr *vf_mac);
-
-    void print_stats();
+    doca_error_t init(
+        struct cloud_app_cfg_t *app_cfg,
+        struct doca_flow_port *pf_port,
+        struct doca_flow_port *vf_port,
+        uint32_t pf_port_id,
+        uint32_t vf_port_id,
+        uint32_t pf_pa,
+        rte_ether_addr *pf_mac,
+        rte_ether_addr *vf_mac);
 
     doca_error_t tx_geneve_pipe_entry_create(struct geneve_encap_ctx_t *encap_ctx);
     doca_error_t rx_geneve_pipe_entry_create(struct geneve_decap_ctx_t *decap_ctx);
     doca_error_t tx_vlan_pipe_entry_create(struct vlan_push_ctx_t* vlan_ctx);
     doca_error_t tx_ipsec_pipe_entry_create(struct ipsec_ctx_t* ipsec_ctx);
+
+    void print_stats();
 };
