@@ -371,25 +371,44 @@ doca_error_t OffloadApp::offload_static_flows() {
 	// - host1: vf 60.0.0.65, pf 100.0.0.65
 	// - host2: vf 60.0.0.66, pf 100.0.0.66
 	// we will offload the flows for these in advance
+	std::string remote_pa;
+	std::string remote_ca;
+	uint32_t ingress_spi;
+	uint32_t egress_spi;
+	rte_ether_addr next_hop_mac;
+
+	if (pf_ip_addr_str == "100.0.0.66") {
+		remote_pa = "100.0.0.65";
+		remote_ca = "60.0.0.65";
+		ingress_spi = 0x111;
+		egress_spi = 0x222;
+		next_hop_mac = {0xde, 0xad, 0xbe, 0xef, 0x00, 0x01};
+	} else {
+		remote_pa = "100.0.0.66";
+		remote_ca = "60.0.0.66";
+		ingress_spi = 0x222;
+		egress_spi = 0x111;
+		next_hop_mac = {0xde, 0xad, 0xbe, 0xef, 0x00, 0x02};
+	}
 	result = create_geneve_tunnel(
-		"60.0.0.66",
-		"100.0.0.66",
-		{0xde, 0xad, 0xbe, 0xef, 0x00, 0x02},
-		0x123);
+		remote_ca,
+		remote_pa,
+		next_hop_mac,
+		0x333);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to create geneve tunnel: %s", doca_error_get_descr(result));
 		return result;
 	}
 
-	result = create_vlan_mapping("100.0.0.66", 100);
+	result = create_vlan_mapping(remote_pa, 100);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to create vlan mapping: %s", doca_error_get_descr(result));
 		return result;
 	}
 
-	result = create_ipsec_tunnel("100.0.0.66",
-		0x123, (uint8_t *)"0123456789abcdef", 16,
-		0x124, (uint8_t *)"0123456789abcdef", 16);
+	result = create_ipsec_tunnel(remote_pa,
+		egress_spi,  (uint8_t *)"0123456789abcdef", 16,
+		ingress_spi, (uint8_t *)"0123456789abcdef", 16);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to create ipsec tunnel: %s", doca_error_get_descr(result));
 		return result;
