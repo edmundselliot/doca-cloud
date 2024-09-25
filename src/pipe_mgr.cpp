@@ -9,15 +9,45 @@ PipeMgr::PipeMgr() {
 
 PipeMgr::~PipeMgr() {}
 
+doca_error_t PipeMgr::init(doca_flow_port *pf_port, doca_flow_port *vf_port, uint32_t pf_port_id, uint32_t vf_port_id, uint32_t pf_pa, rte_ether_addr *pf_mac, rte_ether_addr *vf_mac) {
+	this->pf_port_id = pf_port_id;
+	this->vf_port_id = vf_port_id;
+	this->pf_port = pf_port;
+	this->vf_port = vf_port;
+
+	this->pf_pa = pf_pa;
+	rte_ether_addr_copy(pf_mac, &this->pf_mac);
+	rte_ether_addr_copy(vf_mac, &this->vf_mac);
+
+	for (uint32_t i = 1; i <= 4096; ++i) {
+		ipsec_sa_idxs.insert(i);
+	}
+	dummy_encap_decap_sa_ctx.icv_length = DOCA_FLOW_CRYPTO_ICV_LENGTH_16;
+	dummy_encap_decap_sa_ctx.key_type = DOCA_FLOW_CRYPTO_KEY_256;
+	dummy_encap_decap_sa_ctx.enc_key_data[0] = 0x01;
+	dummy_encap_decap_sa_ctx.salt = 0x12345678;
+
+	doca_error_t result = DOCA_SUCCESS;
+	IF_SUCCESS(result, create_ipsec_sa(&dummy_encap_decap_sa_ctx, &dummy_encap_crypto_id));
+	IF_SUCCESS(result, create_ipsec_sa(&dummy_encap_decap_sa_ctx, &dummy_decap_crypto_id));
+	IF_SUCCESS(result, create_pipes());
+
+	return result;
+}
+
 doca_error_t PipeMgr::create_pipes() {
     doca_error_t result = DOCA_SUCCESS;
 
     IF_SUCCESS(result, rss_pipe_create());
+
 	IF_SUCCESS(result, rx_geneve_pipe_create());
-    IF_SUCCESS(result, tx_vlan_pipe_create());
-    IF_SUCCESS(result, rx_vlan_pipe_create());
+	IF_SUCCESS(result, rx_vlan_pipe_create());
+
+	IF_SUCCESS(result, tx_vlan_pipe_create());
+	IF_SUCCESS(result, tx_ipsec_pipe_create());
 	IF_SUCCESS(result, tx_geneve_pipe_create());
-    IF_SUCCESS(result, tx_root_pipe_create(tx_geneve_pipe));
+
+    IF_SUCCESS(result, tx_root_pipe_create());
     IF_SUCCESS(result, rx_root_pipe_create());
 
     if (result == DOCA_SUCCESS)
@@ -136,7 +166,7 @@ doca_error_t PipeMgr::tx_vlan_pipe_create() {
     struct doca_flow_pipe_cfg *pipe_cfg;
 	IF_SUCCESS(result, doca_flow_pipe_cfg_create(&pipe_cfg, pf_port));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_name(pipe_cfg, "TX_VLAN_PIPE"));
-	IF_SUCCESS(result, doca_flow_pipe_cfg_set_domain(pipe_cfg, DOCA_FLOW_PIPE_DOMAIN_EGRESS));
+	IF_SUCCESS(result, doca_flow_pipe_cfg_set_domain(pipe_cfg, DOCA_FLOW_PIPE_DOMAIN_SECURE_EGRESS));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_monitor(pipe_cfg, &monitor_count));
     IF_SUCCESS(result, doca_flow_pipe_cfg_set_actions(pipe_cfg, actions_arr, nullptr, nullptr, 1));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_dip, nullptr));
@@ -151,9 +181,9 @@ doca_error_t PipeMgr::tx_vlan_pipe_create() {
     return result;
 }
 
-doca_error_t PipeMgr::tx_root_pipe_create(doca_flow_pipe *next_pipe) {
+doca_error_t PipeMgr::tx_root_pipe_create() {
     assert(pf_port);
-    assert(next_pipe);
+    assert(tx_geneve_pipe);
 
 	doca_error_t result = DOCA_SUCCESS;
 
@@ -161,7 +191,7 @@ doca_error_t PipeMgr::tx_root_pipe_create(doca_flow_pipe *next_pipe) {
 
 	struct doca_flow_fwd fwd_pipe = {};
 	fwd_pipe.type = DOCA_FLOW_FWD_PIPE;
-	fwd_pipe.next_pipe = next_pipe;
+	fwd_pipe.next_pipe = tx_geneve_pipe;
 
 	struct doca_flow_pipe_cfg *pipe_cfg;
 	IF_SUCCESS(result, doca_flow_pipe_cfg_create(&pipe_cfg, pf_port));
@@ -235,15 +265,15 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
 doca_error_t PipeMgr::tx_geneve_pipe_create()
 {
 	assert(pf_port);
-	assert(tx_vlan_pipe);
+	assert(tx_ipsec_pipe);
 
-	struct doca_flow_match match_ca = {};
-	match_ca.parser_meta.outer_l3_type = DOCA_FLOW_L3_META_IPV4;
-	match_ca.outer.ip4.dst_ip = 0xffffffff;
+	struct doca_flow_match match_remote_ca = {};
+	match_remote_ca.parser_meta.outer_l3_type = DOCA_FLOW_L3_META_IPV4;
+	match_remote_ca.outer.ip4.dst_ip = 0xffffffff;
 
 	struct doca_flow_fwd fwd_hit = {};
 	fwd_hit.type = DOCA_FLOW_FWD_PIPE;
-	fwd_hit.next_pipe = tx_vlan_pipe;
+	fwd_hit.next_pipe = tx_ipsec_pipe;
 
 	struct doca_flow_actions actions = {};
 	actions.encap_type = DOCA_FLOW_RESOURCE_TYPE_NON_SHARED;
@@ -269,7 +299,7 @@ doca_error_t PipeMgr::tx_geneve_pipe_create()
 	IF_SUCCESS(result, doca_flow_pipe_cfg_create(&pipe_cfg, pf_port));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_name(pipe_cfg, "GENEVE_ENCAP_PIPE"));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_domain(pipe_cfg, DOCA_FLOW_PIPE_DOMAIN_EGRESS));
-	IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_ca, NULL));
+	IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_remote_ca, NULL));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_actions(pipe_cfg, actions_ptr_arr, NULL, NULL, 1));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_monitor(pipe_cfg, &monitor_count));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
@@ -426,19 +456,19 @@ doca_error_t PipeMgr::rx_vlan_pipe_create() {
     return result;
 }
 
-doca_error_t PipeMgr::tx_vlan_pipe_entry_create(struct vlan_push_ctx_t* push_ctx) {
+doca_error_t PipeMgr::tx_vlan_pipe_entry_create(struct vlan_push_ctx_t* vlan_ctx) {
 	assert(tx_vlan_pipe);
 
 	struct doca_flow_pipe_entry *new_entry;
 
 	struct doca_flow_match match_dst_pa = {};
-	match_dst_pa.outer.ip4.dst_ip = push_ctx->dst_pa;
+	match_dst_pa.outer.ip4.dst_ip = vlan_ctx->remote_pa;
 
 	struct doca_flow_actions actions = {};
 	actions.has_push = true;
 	actions.push.type = DOCA_FLOW_PUSH_ACTION_VLAN;
 	actions.push.vlan.eth_type = rte_cpu_to_be_16(DOCA_FLOW_ETHER_TYPE_VLAN);
-	actions.push.vlan.vlan_hdr.tci = rte_cpu_to_be_16(push_ctx->vlan_id);
+	actions.push.vlan.vlan_hdr.tci = rte_cpu_to_be_16(vlan_ctx->vlan_id);
 
 	doca_error_t result = add_single_entry(0, tx_vlan_pipe, pf_port, &match_dst_pa, &actions, NULL, NULL, &new_entry);
 	if (result != DOCA_SUCCESS) {
@@ -446,6 +476,119 @@ doca_error_t PipeMgr::tx_vlan_pipe_entry_create(struct vlan_push_ctx_t* push_ctx
 		return result;
 	}
 
-	std::string entry_name = "TX_VLAN_PIPE_ENTRY_" + ipv4_to_string(push_ctx->dst_pa);
+	std::string entry_name = "TX_VLAN_PIPE_ENTRY_" + ipv4_to_string(vlan_ctx->remote_pa);
+	return DOCA_SUCCESS;
+}
+
+doca_error_t PipeMgr::tx_ipsec_pipe_create() {
+	assert(pf_port);
+	assert(tx_vlan_pipe);
+
+	doca_error_t result = DOCA_SUCCESS;
+
+	struct doca_flow_match match_remote_pa = {};
+	match_remote_pa.parser_meta.outer_l3_type = DOCA_FLOW_L3_META_IPV4;
+	match_remote_pa.outer.ip4.dst_ip = 0xffffffff;
+
+	struct doca_flow_actions actions = {};
+	// transport mode - no encap/decap, just ESP header below existing outer IP
+	actions.crypto_encap.net_type = DOCA_FLOW_CRYPTO_HEADER_ESP_OVER_IPV4;
+	memset(actions.crypto_encap.encap_data, 0xff, 16);
+	actions.crypto_encap.data_size = 16;
+	actions.crypto.action_type = DOCA_FLOW_CRYPTO_ACTION_ENCRYPT;
+	actions.crypto_encap.action_type = DOCA_FLOW_CRYPTO_REFORMAT_ENCAP;
+	actions.crypto_encap.icv_size = 0xffff;
+	actions.crypto.resource_type = DOCA_FLOW_CRYPTO_RESOURCE_IPSEC_SA;
+	actions.crypto.crypto_id = dummy_encap_crypto_id;
+	struct doca_flow_actions *actions_arr[] = {&actions};
+
+	struct doca_flow_fwd fwd_vlan_pipe = {};
+	fwd_vlan_pipe.type = DOCA_FLOW_FWD_PIPE;
+	fwd_vlan_pipe.next_pipe = tx_vlan_pipe;
+
+	struct doca_flow_pipe_cfg *pipe_cfg;
+	IF_SUCCESS(result, doca_flow_pipe_cfg_create(&pipe_cfg, pf_port));
+	IF_SUCCESS(result, doca_flow_pipe_cfg_set_name(pipe_cfg, "TX_IPSEC_PIPE"));
+	IF_SUCCESS(result, doca_flow_pipe_cfg_set_monitor(pipe_cfg, &monitor_count));
+	IF_SUCCESS(result, doca_flow_pipe_cfg_set_domain(pipe_cfg, DOCA_FLOW_PIPE_DOMAIN_SECURE_EGRESS));
+    IF_SUCCESS(result, doca_flow_pipe_cfg_set_actions(pipe_cfg, actions_arr, nullptr, nullptr, 1));
+	IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_remote_pa, nullptr));
+	IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
+	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_vlan_pipe, &fwd_vlan_pipe, &tx_ipsec_pipe));
+    if (pipe_cfg)
+		doca_flow_pipe_cfg_destroy(pipe_cfg);
+
+	monitored_pipe_misses.push_back(std::make_pair("TX_IPSEC_PIPE", tx_ipsec_pipe));
+
+	assert(result == DOCA_SUCCESS);
+
+	return result;
+}
+
+doca_error_t PipeMgr::tx_ipsec_pipe_entry_create(struct ipsec_ctx_t *ipsec_ctx) {
+	struct doca_flow_pipe_entry *new_entry;
+
+	uint8_t reformat_encap_data[16] = {
+		GET_BYTE(ipsec_ctx->spi, 3),
+		GET_BYTE(ipsec_ctx->spi, 2),
+		GET_BYTE(ipsec_ctx->spi, 1),
+		GET_BYTE(ipsec_ctx->spi, 0),
+		0,0,0,0,
+		0,0,0,0,
+		0,0,0,0
+	};
+
+	struct doca_flow_match match_remote_pa = {};
+	match_remote_pa.parser_meta.outer_l3_type = DOCA_FLOW_L3_META_IPV4;
+	match_remote_pa.outer.ip4.dst_ip = ipsec_ctx->remote_pa;
+
+	struct doca_flow_actions actions = {};
+	actions.has_crypto_encap = true;
+	actions.crypto.crypto_id = ipsec_ctx->crypto_id;
+	memcpy(&actions.crypto_encap.encap_data, reformat_encap_data, sizeof(reformat_encap_data));
+	actions.crypto_encap.data_size = sizeof(reformat_encap_data);
+	actions.crypto_encap.icv_size = 0; // TODO: is this right
+
+	doca_error_t result = add_single_entry(0, tx_ipsec_pipe, pf_port, &match_remote_pa, &actions, NULL, NULL, &new_entry);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to add entry to TX_IPSEC_PIPE: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	std::string entry_name = "TX_IPSEC_PIPE_ENTRY_" + ipv4_to_string(ipsec_ctx->remote_pa);
+
+	return DOCA_SUCCESS;
+}
+
+doca_error_t PipeMgr::create_ipsec_sa(struct ipsec_sa_ctx_t *ipsec_sa_ctx, uint32_t *crypto_id) {
+	assert(crypto_id);
+
+	doca_error_t result = get_available_ipsec_sa_idx(crypto_id);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to get available ipsec sa idx: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	struct doca_flow_shared_resource_cfg cfg = {};
+	cfg.domain = DOCA_FLOW_PIPE_DOMAIN_SECURE_EGRESS;
+	cfg.ipsec_sa_cfg.icv_len = ipsec_sa_ctx->icv_length;
+	cfg.ipsec_sa_cfg.salt = ipsec_sa_ctx->salt;
+	cfg.ipsec_sa_cfg.key_cfg.key_type = ipsec_sa_ctx->key_type;
+	cfg.ipsec_sa_cfg.key_cfg.key = reinterpret_cast<uint32_t*>(&ipsec_sa_ctx->enc_key_data);
+	cfg.ipsec_sa_cfg.sn_initial = 0;
+	cfg.ipsec_sa_cfg.esn_en = ipsec_sa_ctx->esn_en;
+	// if (!app_cfg->sw_sn_inc_enable) {
+	// 	cfg.ipsec_sa_cfg.sn_offload_type = DOCA_FLOW_CRYPTO_SN_OFFLOAD_INC;
+	// 	cfg.ipsec_sa_cfg.lifetime_threshold = ipsec_sa_ctx->lifetime_threshold;
+	// }
+
+	result = doca_flow_shared_resource_set_cfg(DOCA_FLOW_SHARED_RESOURCE_IPSEC_SA, *crypto_id, &cfg);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to cfg shared ipsec object: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	DOCA_LOG_INFO("Created ipsec sa with crypto_id %d", *crypto_id);
+
 	return DOCA_SUCCESS;
 }

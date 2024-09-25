@@ -152,6 +152,7 @@ doca_error_t OffloadApp::init_doca_flow(void)
     IF_SUCCESS(result, doca_flow_cfg_set_pipe_queues(flow_cfg, nb_queues));
 	IF_SUCCESS(result, doca_flow_cfg_set_queue_depth(flow_cfg, 128));
 	IF_SUCCESS(result, doca_flow_cfg_set_nr_counters(flow_cfg, 1024));
+	IF_SUCCESS(result, doca_flow_cfg_set_nr_shared_resource(flow_cfg, 8192, DOCA_FLOW_SHARED_RESOURCE_IPSEC_SA));
 	IF_SUCCESS(result, doca_flow_cfg_set_mode_args(flow_cfg, "switch,hws"));
 	IF_SUCCESS(result, doca_flow_cfg_set_cb_entry_process(flow_cfg, OffloadApp::check_for_valid_entry));
 	IF_SUCCESS(result, doca_flow_cfg_set_default_rss(flow_cfg, &rss_config));
@@ -316,7 +317,7 @@ doca_error_t OffloadApp::create_vlan_mapping(std::string remote_pa, uint16_t vla
 	doca_error_t result = DOCA_SUCCESS;
 
 	struct vlan_push_ctx_t vlan_push_data = {};
-	vlan_push_data.dst_pa = ipv4_string_to_u32(remote_pa);
+	vlan_push_data.remote_pa = ipv4_string_to_u32(remote_pa);
 	vlan_push_data.vlan_id = vlan_id;
 	result = pipe_mgr.tx_vlan_pipe_entry_create(&vlan_push_data);
 	if (result != DOCA_SUCCESS) {
