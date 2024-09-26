@@ -1,0 +1,40 @@
+application: doca-cloud
+version: 1.0.0
+
+# If running on hostname, run the app on the pci/vf/vf_mac
+device_cfg:
+- hostname: doca-vr-065
+  pci: 0000:8a:00.0
+  vf: pf0vf0
+  vf_mac: deadbeef0001
+- hostname: doca-vr-066
+  pci: 0000:8a:00.0
+  vf: pf0vf0
+  vf_mac: deadbeef0002
+
+# packets with dip == CA will get an encap with dip == PA and VNI
+geneve_cfg:
+- ca: 60.0.0.65
+  pa: 100.0.0.65
+  vni: 100
+- ca: 60.0.0.66
+  pa: 100.0.0.66
+  vni: 101
+
+# Packets matching src_pa and dst_pa will get ipsec encrypted with spi/key
+ipsec_cfg:
+- src_pa: 100.0.0.65
+  dst_pa: 100.0.0.66
+  spi: 0x1234
+  key: 0x0123456789abcdef
+- src_pa: 100.0.0.66
+  dst_pa: 100.0.0.65
+  spi: 0x5678
+  key: 0x1111111111111111
+
+# Packets matching dst_pa will get vlan tagged with vlan
+vlan_cfg:
+- dst_pa: 100.0.0.65
+  vlan: 100
+- dst_pa: 100.0.0.66
+  vlan: 101

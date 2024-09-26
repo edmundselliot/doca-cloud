@@ -11,6 +11,7 @@ source_files = [
 	'src/pipe_mgr.cpp',
     'src/control_path.cpp',
     'src/utils.cpp',
+	'src/parse_cfg.cpp',
     samples_dir_path + '/common.c',
 	common_dir_path + '/dpdk_utils.c',
 ]

@@ -14,7 +14,6 @@
 #include "utils.h"
 #include "main.h"
 
-#define MAX_IPSEC_KEY_LEN (32)			  /* Maximal GCM key size is 256bit==32B */
 
 /*
     High-level pipe topology
@@ -42,30 +41,6 @@
          ▼                    │
       wire tx             wire rx
 */
-
-struct geneve_encap_ctx_t {
-    uint32_t remote_ca;
-    uint32_t remote_pa;
-    rte_ether_addr next_hop_mac;
-    uint32_t vni;
-};
-
-struct geneve_decap_ctx_t {
-    uint32_t remote_ca;
-    uint32_t vni;
-};
-
-struct vlan_push_ctx_t {
-    uint32_t remote_pa;
-    uint16_t vlan_id;
-};
-
-struct ipsec_ctx_t {
-    uint32_t remote_pa;
-    uint32_t spi;
-    uint8_t key[MAX_IPSEC_KEY_LEN];
-    uint32_t key_len_bytes;
-};
 
 struct ipsec_sa_ctx_t {
 	enum doca_flow_crypto_icv_len icv_length; /* ICV length */

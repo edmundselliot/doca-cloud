@@ -3,9 +3,10 @@
 
 DOCA_LOG_REGISTER(MAIN);
 
-int main() {
+int main(int argc, char *argv[]) {
     doca_error_t result;
 	struct doca_log_backend *sdk_log;
+	struct input_cfg_t input_cfg = {};
 
     // Register a logger backend
 	result = doca_log_backend_create_standard();
@@ -20,6 +21,16 @@ int main() {
 	result = doca_log_backend_set_sdk_level(sdk_log, DOCA_LOG_LEVEL_WARNING);
 	if (result != DOCA_SUCCESS)
 		return EXIT_FAILURE;
+
+	if (argc != 2) {
+		DOCA_LOG_ERR("Usage: %s <config file>", argv[0]);
+		return EXIT_FAILURE;
+	}
+	result = parse_input_cfg(argv[1], &input_cfg);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to parse input config file: %s", doca_error_get_descr(result));
+		return EXIT_FAILURE;
+	}
 
 	struct rte_ether_addr vf_mac = {};
 	vf_mac.addr_bytes[0] = 0xde;
