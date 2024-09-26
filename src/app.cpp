@@ -20,6 +20,9 @@ OffloadApp::OffloadApp(std::string pf_pci, std::string core_mask, rte_ether_addr
 
 	// This is set after EAL init because it uses rte_lcore_count()
 	this->app_cfg.dpdk_cfg.port_config.nb_queues = -1;
+
+	// Note: 2 reserved SAs for dummy encap/decap
+	this->app_cfg.max_ipsec_sessions = 4096;
 }
 
 OffloadApp::~OffloadApp() {
@@ -37,7 +40,7 @@ doca_error_t OffloadApp::init() {
     IF_SUCCESS(result, start_port(pf_port_id, pf_dev, &pf_port));
     IF_SUCCESS(result, start_port(vf_port_id, nullptr, &vf_port));
 
-	pipe_mgr.init(pf_port, vf_port, pf_port_id, vf_port_id, pf_ip_addr.ipv4_addr, &pf_mac, &vf_mac);
+	pipe_mgr.init(&app_cfg, pf_port, vf_port, pf_port_id, vf_port_id, pf_ip_addr.ipv4_addr, &pf_mac, &vf_mac);
 
     return result;
 }
@@ -152,6 +155,8 @@ doca_error_t OffloadApp::init_doca_flow(void)
     IF_SUCCESS(result, doca_flow_cfg_set_pipe_queues(flow_cfg, nb_queues));
 	IF_SUCCESS(result, doca_flow_cfg_set_queue_depth(flow_cfg, 128));
 	IF_SUCCESS(result, doca_flow_cfg_set_nr_counters(flow_cfg, 1024));
+	IF_SUCCESS(result, doca_flow_cfg_set_nr_shared_resource(
+		flow_cfg, app_cfg.max_ipsec_sessions + 2, DOCA_FLOW_SHARED_RESOURCE_IPSEC_SA));
 	IF_SUCCESS(result, doca_flow_cfg_set_mode_args(flow_cfg, "switch,hws"));
 	IF_SUCCESS(result, doca_flow_cfg_set_cb_entry_process(flow_cfg, OffloadApp::check_for_valid_entry));
 	IF_SUCCESS(result, doca_flow_cfg_set_default_rss(flow_cfg, &rss_config));
@@ -316,7 +321,7 @@ doca_error_t OffloadApp::create_vlan_mapping(std::string remote_pa, uint16_t vla
 	doca_error_t result = DOCA_SUCCESS;
 
 	struct vlan_push_ctx_t vlan_push_data = {};
-	vlan_push_data.dst_pa = ipv4_string_to_u32(remote_pa);
+	vlan_push_data.remote_pa = ipv4_string_to_u32(remote_pa);
 	vlan_push_data.vlan_id = vlan_id;
 	result = pipe_mgr.tx_vlan_pipe_entry_create(&vlan_push_data);
 	if (result != DOCA_SUCCESS) {
@@ -327,6 +332,38 @@ doca_error_t OffloadApp::create_vlan_mapping(std::string remote_pa, uint16_t vla
 	return result;
 }
 
+doca_error_t OffloadApp::create_ipsec_tunnel(
+	std::string remote_pa,
+	uint32_t enc_spi, uint8_t *enc_key_data, uint32_t enc_key_len,
+	uint32_t dec_spi, uint8_t *dec_key_data, uint32_t dec_key_len)
+{
+	struct ipsec_ctx_t egress_ipsec_ctx = {};
+	egress_ipsec_ctx.remote_pa = ipv4_string_to_u32(remote_pa);
+	egress_ipsec_ctx.spi = enc_spi;
+	memcpy(egress_ipsec_ctx.key, enc_key_data, enc_key_len);
+	egress_ipsec_ctx.key_len_bytes = enc_key_len;
+
+	doca_error_t result = pipe_mgr.tx_ipsec_session_create(&egress_ipsec_ctx);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create tx ipsec pipe entry: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	struct ipsec_ctx_t ingress_ipsec_ctx = {};
+	ingress_ipsec_ctx.remote_pa = ipv4_string_to_u32(remote_pa);
+	ingress_ipsec_ctx.spi = dec_spi;
+	memcpy(ingress_ipsec_ctx.key, dec_key_data, dec_key_len);
+	ingress_ipsec_ctx.key_len_bytes = dec_key_len;
+
+	result = pipe_mgr.rx_ipsec_session_create(&ingress_ipsec_ctx);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create rx ipsec pipe entry: %s", doca_error_get_descr(result));
+		return result;
+	}
+
+	return DOCA_SUCCESS;
+}
+
 doca_error_t OffloadApp::offload_static_flows() {
 	doca_error_t result = DOCA_SUCCESS;
 
@@ -334,22 +371,48 @@ doca_error_t OffloadApp::offload_static_flows() {
 	// - host1: vf 60.0.0.65, pf 100.0.0.65
 	// - host2: vf 60.0.0.66, pf 100.0.0.66
 	// we will offload the flows for these in advance
+	std::string remote_pa;
+	std::string remote_ca;
+	uint32_t ingress_spi;
+	uint32_t egress_spi;
+	rte_ether_addr next_hop_mac;
+
+	if (pf_ip_addr_str == "100.0.0.66") {
+		remote_pa = "100.0.0.65";
+		remote_ca = "60.0.0.65";
+		ingress_spi = 0x111;
+		egress_spi = 0x222;
+		next_hop_mac = {0xde, 0xad, 0xbe, 0xef, 0x00, 0x01};
+	} else {
+		remote_pa = "100.0.0.66";
+		remote_ca = "60.0.0.66";
+		ingress_spi = 0x222;
+		egress_spi = 0x111;
+		next_hop_mac = {0xde, 0xad, 0xbe, 0xef, 0x00, 0x02};
+	}
 	result = create_geneve_tunnel(
-		"60.0.0.66",
-		"100.0.0.66",
-		{0xde, 0xad, 0xbe, 0xef, 0x00, 0x02},
-		0x123);
+		remote_ca,
+		remote_pa,
+		next_hop_mac,
+		0x333);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to create geneve tunnel: %s", doca_error_get_descr(result));
 		return result;
 	}
 
-	result = create_vlan_mapping("100.0.0.66", 100);
+	result = create_vlan_mapping(remote_pa, 100);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to create vlan mapping: %s", doca_error_get_descr(result));
 		return result;
 	}
 
+	result = create_ipsec_tunnel(remote_pa,
+		egress_spi,  (uint8_t *)"0123456789abcdef", 16,
+		ingress_spi, (uint8_t *)"0123456789abcdef", 16);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create ipsec tunnel: %s", doca_error_get_descr(result));
+		return result;
+	}
 
 	return result;
 }

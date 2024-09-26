@@ -2,6 +2,7 @@
 
 #include <unistd.h>
 #include <vector>
+#include <set>
 
 #include <rte_ether.h>
 #include <rte_ethdev.h>
@@ -11,6 +12,9 @@
 #include <doca_dpdk.h>
 
 #include "utils.h"
+#include "main.h"
+
+#define MAX_IPSEC_KEY_LEN (32)			  /* Maximal GCM key size is 256bit==32B */
 
 /*
     High-level pipe topology
@@ -52,12 +56,30 @@ struct geneve_decap_ctx_t {
 };
 
 struct vlan_push_ctx_t {
-    uint32_t dst_pa;
+    uint32_t remote_pa;
     uint16_t vlan_id;
+};
+
+struct ipsec_ctx_t {
+    uint32_t remote_pa;
+    uint32_t spi;
+    uint8_t key[MAX_IPSEC_KEY_LEN];
+    uint32_t key_len_bytes;
+};
+
+struct ipsec_sa_ctx_t {
+	enum doca_flow_crypto_icv_len icv_length; /* ICV length */
+	enum doca_flow_crypto_key_type key_type; /* Key type */
+	uint8_t key[MAX_IPSEC_KEY_LEN]; /* Policy encryption key */
+	uint32_t salt; /* Key Salt */
+	uint32_t lifetime_threshold; /* SA lifetime threshold */
+	bool esn_en; /* If extended sn is enable*/
 };
 
 class PipeMgr {
 private:
+    struct cloud_app_cfg_t *app_cfg;
+
     uint32_t pf_port_id;
     struct doca_flow_port *pf_port;
     uint32_t vf_port_id;
@@ -89,9 +111,17 @@ private:
     struct doca_flow_fwd fwd_rss = {};
 	struct doca_flow_actions geneve_encap_actions = {};
 
+    struct ipsec_sa_ctx_t dummy_encap_decap_sa_ctx = {};
+    uint32_t dummy_encap_crypto_id;
+    uint32_t dummy_decap_crypto_id;
+
+    std::vector<std::pair<std::string, struct doca_flow_pipe_entry*>> monitored_pipe_entries = {};
+    std::vector<std::pair<std::string, struct doca_flow_pipe*>> monitored_pipe_misses = {};
+    std::set<uint32_t> ipsec_sa_idxs = {};
+
     doca_error_t create_pipes();
     doca_error_t rss_pipe_create();
-    doca_error_t tx_root_pipe_create(doca_flow_pipe *next_pipe);
+    doca_error_t tx_root_pipe_create();
     doca_error_t tx_selector_pipe_create();
     doca_error_t tx_geneve_pipe_create();
     doca_error_t tx_ipsec_pipe_create();
@@ -101,32 +131,31 @@ private:
     doca_error_t rx_ipsec_pipe_create();
     doca_error_t rx_vlan_pipe_create();
 
-    void print_pipe_entry_stats(struct doca_flow_pipe_entry* entry, std::string entry_name);
-    void print_pipe_stats(struct doca_flow_pipe* pipe, std::string pipe_name);
-
-    std::vector<std::pair<std::string, struct doca_flow_pipe_entry*>> monitored_pipe_entries = {};
-    std::vector<std::pair<std::string, struct doca_flow_pipe*>> monitored_pipe_misses = {};
+    doca_error_t get_available_ipsec_sa_idx(uint32_t *sa_idx);
+    doca_error_t create_ipsec_sa(struct ipsec_sa_ctx_t *ipsec_sa_ctx, uint32_t sa_idx, bool egress);
+    doca_error_t bind_ipsec_sa_ids();
+    doca_error_t tx_ipsec_pipe_entry_create(uint32_t remote_pa, uint32_t spi, uint32_t sa_idx);
+    doca_error_t rx_ipsec_pipe_entry_create(uint32_t remote_pa, uint32_t spi, uint32_t sa_idx);
 
 public:
     PipeMgr();
     ~PipeMgr();
 
-    doca_error_t init(doca_flow_port *pf_port, doca_flow_port *vf_port, uint32_t pf_port_id, uint32_t vf_port_id, uint32_t pf_pa, rte_ether_addr *pf_mac, rte_ether_addr *vf_mac) {
-        this->pf_port_id = pf_port_id;
-        this->vf_port_id = vf_port_id;
-        this->pf_port = pf_port;
-        this->vf_port = vf_port;
-
-        this->pf_pa = pf_pa;
-        rte_ether_addr_copy(pf_mac, &this->pf_mac);
-        rte_ether_addr_copy(vf_mac, &this->vf_mac);
-
-        return create_pipes();
-    }
-
-    void print_stats();
+    doca_error_t init(
+        struct cloud_app_cfg_t *app_cfg,
+        struct doca_flow_port *pf_port,
+        struct doca_flow_port *vf_port,
+        uint32_t pf_port_id,
+        uint32_t vf_port_id,
+        uint32_t pf_pa,
+        rte_ether_addr *pf_mac,
+        rte_ether_addr *vf_mac);
 
     doca_error_t tx_geneve_pipe_entry_create(struct geneve_encap_ctx_t *encap_ctx);
     doca_error_t rx_geneve_pipe_entry_create(struct geneve_decap_ctx_t *decap_ctx);
-    doca_error_t tx_vlan_pipe_entry_create(struct vlan_push_ctx_t* push_ctx);
+    doca_error_t tx_vlan_pipe_entry_create(struct vlan_push_ctx_t* vlan_ctx);
+    doca_error_t tx_ipsec_session_create(struct ipsec_ctx_t* ipsec_ctx);
+    doca_error_t rx_ipsec_session_create(struct ipsec_ctx_t* ipsec_ctx);
+
+    void print_stats();
 };
