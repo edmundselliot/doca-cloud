@@ -146,16 +146,15 @@ doca_error_t PipeMgr::tx_vlan_pipe_create() {
     match_dip.parser_meta.outer_l3_type = DOCA_FLOW_L3_META_IPV4;
     match_dip.outer.ip4.dst_ip = 0xffffffff;
 
-	// struct doca_flow_fwd fwd_to_wire = {};
-    // fwd_to_wire.type = DOCA_FLOW_FWD_PORT;
-    // fwd_to_wire.port_id = pf_port_id;
+	struct doca_flow_fwd fwd_to_wire = {};
+    fwd_to_wire.type = DOCA_FLOW_FWD_PORT;
+    fwd_to_wire.port_id = pf_port_id;
 
     struct doca_flow_actions actions = {0};
 	struct doca_flow_actions *actions_arr[] = {&actions};
     actions.has_push = true;
 	actions.push.type = DOCA_FLOW_PUSH_ACTION_VLAN;
 	actions.push.vlan.eth_type = rte_cpu_to_be_16(DOCA_FLOW_ETHER_TYPE_VLAN);
-    // TCI is defined per-entry
 	actions.push.vlan.vlan_hdr.tci = rte_cpu_to_be_16(0xffff);
 
     struct doca_flow_pipe_cfg *pipe_cfg;
@@ -166,8 +165,8 @@ doca_error_t PipeMgr::tx_vlan_pipe_create() {
     IF_SUCCESS(result, doca_flow_pipe_cfg_set_actions(pipe_cfg, actions_arr, nullptr, nullptr, 1));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_dip, nullptr));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
-	// TODO: currently sending to FWD_RSS for easier debugging. Long term, move both fwd-hit and fwd-miss to fwd_to_wire
-	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_rss, &fwd_rss, &tx_vlan_pipe));
+	// TODO: fwd-miss to a pipe which forwards to wire
+	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_to_wire, &fwd_rss, &tx_vlan_pipe));
     if (pipe_cfg)
 		doca_flow_pipe_cfg_destroy(pipe_cfg);
 
