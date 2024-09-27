@@ -37,7 +37,6 @@ doca_error_t parse_input_cfg(std::string filename, struct input_cfg_t *cfg) {
 
         if (host_cfg.hostname == current_hostname) {
             cfg->host_cfg = host_cfg;
-            DOCA_LOG_INFO("Found host configuration for %s", current_hostname.c_str());
             local_host_found = true;
         }
     }
