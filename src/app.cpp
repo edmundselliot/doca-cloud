@@ -2,11 +2,13 @@
 
 DOCA_LOG_REGISTER(OFFLOAD_APP);
 
-OffloadApp::OffloadApp(std::string pf_pci, std::string core_mask, rte_ether_addr vf_mac) {
+OffloadApp::OffloadApp(struct input_cfg_t *input_cfg) {
+	this->app_cfg.input_cfg = input_cfg;
+
     DOCA_LOG_INFO("Initializing offload app");
-    this->pf_pci = pf_pci;
-    this->core_mask = core_mask;
-	memcpy(&this->vf_mac, &vf_mac, sizeof(rte_ether_addr));
+    this->pf_pci = input_cfg->host_cfg.pf_pci;
+    this->core_mask = "0x3";
+	memcpy(&this->vf_mac, &input_cfg->host_cfg.vf_mac, sizeof(rte_ether_addr));
 
 	this->pf_port_id = 0;
 	this->vf_port_id = 1;

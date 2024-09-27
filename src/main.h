@@ -1,7 +1,11 @@
 #pragma once
 
-#include <vector>
+#include <iostream>
 #include <string>
+#include <vector>
+#include <yaml-cpp/yaml.h>
+#include <cstring>
+#include <fstream>
 
 #include <rte_ether.h>
 #include <rte_ethdev.h>
@@ -43,7 +47,6 @@ struct ipsec_ctx_t {
     uint32_t key_len_bytes;
 };
 
-
 struct host_cfg_t {
     std::string hostname;
     std::string pf_pci;
@@ -52,16 +55,18 @@ struct host_cfg_t {
 };
 
 struct input_cfg_t {
-    std::vector<host_cfg_t> hosts;
+    std::vector<struct host_cfg_t> hosts;
+    struct host_cfg_t host_cfg;
 
-    std::vector<geneve_encap_ctx_t> geneve_encaps;
-    std::vector<geneve_decap_ctx_t> geneve_decaps;
-    std::vector<vlan_push_ctx_t> vlan_pushes;
-    std::vector<ipsec_ctx_t> ipsec_encaps;
-    std::vector<ipsec_ctx_t> ipsec_decaps;
+    std::vector<struct geneve_encap_ctx_t> geneve_encaps;
+    std::vector<struct geneve_decap_ctx_t> geneve_decaps;
+    std::vector<struct vlan_push_ctx_t> vlan_pushes;
+    std::vector<struct ipsec_ctx_t> ipsec_encaps;
+    std::vector<struct ipsec_ctx_t> ipsec_decaps;
 };
 
 struct cloud_app_cfg_t {
+    struct input_cfg_t *input_cfg; //!< Input configuration details
     struct application_dpdk_config dpdk_cfg; //!< Configuration details of DPDK ports and queues
 	std::string core_mask; //!< EAL core mask
     uint32_t max_ipsec_sessions;

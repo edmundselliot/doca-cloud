@@ -21,6 +21,7 @@ deps = [
 	dependency('doca-common'),
 	dependency('doca-dpdk-bridge'),
 	dependency('libdpdk'),
+	dependency('yaml-cpp'),
 ]
 
 app_inc_dirs = [

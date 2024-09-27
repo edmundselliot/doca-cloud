@@ -6,11 +6,11 @@ device_cfg:
 - hostname: doca-vr-065
   pci: 0000:8a:00.0
   vf: pf0vf0
-  vf_mac: deadbeef0001
+  vf_mac: de:ad:be:ef:00:01
 - hostname: doca-vr-066
   pci: 0000:8a:00.0
   vf: pf0vf0
-  vf_mac: deadbeef0002
+  vf_mac: de:ad:be:ef:00:02
 
 # packets with dip == CA will get an encap with dip == PA and VNI
 geneve_cfg:
