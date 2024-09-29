@@ -368,21 +368,52 @@ doca_error_t OffloadApp::create_ipsec_tunnel(
 
 doca_error_t OffloadApp::offload_static_flows() {
 	doca_error_t result = DOCA_SUCCESS;
-	struct input_cfg_t *input_cfg = app_cfg.input_cfg;
-	for (auto &geneve_encap : input_cfg->geneve_encaps) {
-		IF_SUCCESS(result, pipe_mgr.tx_geneve_pipe_entry_create(&geneve_encap));
+
+	// For this test app, we are running on hosts:
+	// - host1: vf 60.0.0.65, pf 100.0.0.65
+	// - host2: vf 60.0.0.66, pf 100.0.0.66
+	// we will offload the flows for these in advance
+	std::string remote_pa;
+	std::string remote_ca;
+	uint32_t ingress_spi;
+	uint32_t egress_spi;
+	rte_ether_addr next_hop_mac;
+
+	if (pf_ip_addr_str == "100.0.0.66") {
+		remote_pa = "100.0.0.65";
+		remote_ca = "60.0.0.65";
+		ingress_spi = 0x111;
+		egress_spi = 0x222;
+		next_hop_mac = {0xde, 0xad, 0xbe, 0xef, 0x00, 0x01};
+	} else {
+		remote_pa = "100.0.0.66";
+		remote_ca = "60.0.0.66";
+		ingress_spi = 0x222;
+		egress_spi = 0x111;
+		next_hop_mac = {0xde, 0xad, 0xbe, 0xef, 0x00, 0x02};
 	}
-	for (auto &geneve_decap : input_cfg->geneve_decaps) {
-		IF_SUCCESS(result, pipe_mgr.rx_geneve_pipe_entry_create(&geneve_decap));
+	result = create_geneve_tunnel(
+		remote_ca,
+		remote_pa,
+		next_hop_mac,
+		0x333);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create geneve tunnel: %s", doca_error_get_descr(result));
+		return result;
 	}
-	for (auto &vlan_push : input_cfg->vlan_pushes) {
-		IF_SUCCESS(result, pipe_mgr.tx_vlan_pipe_entry_create(&vlan_push));
+
+	result = create_vlan_mapping(remote_pa, 100);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create vlan mapping: %s", doca_error_get_descr(result));
+		return result;
 	}
-	for (auto &ipsec_encap : input_cfg->ipsec_encaps) {
-		IF_SUCCESS(result, pipe_mgr.tx_ipsec_session_create(&ipsec_encap));
-	}
-	for (auto &ipsec_decap : input_cfg->ipsec_decaps) {
-		IF_SUCCESS(result, pipe_mgr.rx_ipsec_session_create(&ipsec_decap));
+
+	result = create_ipsec_tunnel(remote_pa,
+		egress_spi,  (uint8_t *)"0123456789abcdef", 16,
+		ingress_spi, (uint8_t *)"0123456789abcdef", 16);
+	if (result != DOCA_SUCCESS) {
+		DOCA_LOG_ERR("Failed to create ipsec tunnel: %s", doca_error_get_descr(result));
+		return result;
 	}
 
 	return result;

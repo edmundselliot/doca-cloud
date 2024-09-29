@@ -12,29 +12,46 @@ device_cfg:
   vf: pf0vf0
   vf_mac: de:ad:be:ef:00:02
 
-# packets with dip == CA will get an encap with dip == PA and VNI
+# tx - match on ca, encap with pa/vni
+# rx - match on pa/vni/ca, decap
 geneve_cfg:
-- ca: 60.0.0.65
-  pa: 100.0.0.65
-  vni: 100
-- ca: 60.0.0.66
-  pa: 100.0.0.66
-  vni: 101
+- hostname: doca-vr-065
+  tunnels:
+    ca: 60.0.0.66
+    pa: 100.0.0.66
+    vni: 100
+- hostname: doca-vr-066
+  tunnels:
+    ca: 60.0.0.65
+    pa: 100.0.0.65
+    vni: 100
 
-# Packets matching src_pa and dst_pa will get ipsec encrypted with spi/key
+# tx - match on dst_pa, encr with encr_spi/encr_key
+# rx - match on decr_spi/dst_pa, decr with decr_key
 ipsec_cfg:
-- src_pa: 100.0.0.65
-  dst_pa: 100.0.0.66
-  spi: 0x1234
-  key: 0x0123456789abcdef
-- src_pa: 100.0.0.66
-  dst_pa: 100.0.0.65
-  spi: 0x5678
-  key: 0x1111111111111111
+- hostname: doca-vr-065
+  tunnels:
+  - dst_pa: 100.0.0.66
+    encr_spi: 0x1234
+    encr_key: 0x0123456789abcdef
+    decr_spi: 0x5678
+    decr_key: 0x1111111111111111
+- hostname: doca-vr-066
+  tunnels:
+  - dst_pa: 100.0.0.65
+    encr_spi: 0x5678
+    encr_key: 0x1111111111111111
+    decr_spi: 0x1234
+    decr_key: 0x0123456789abcdef
 
-# Packets matching dst_pa will get vlan tagged with vlan
+# tx - match on dst_pa, encap with vlan
+# rx - match on *, decap
 vlan_cfg:
-- dst_pa: 100.0.0.65
-  vlan: 100
-- dst_pa: 100.0.0.66
-  vlan: 101
+- hostname: doca-vr-065
+  tunnels:
+  - dst_pa: 100.0.0.66
+    vlan: 100
+- hostname: doca-vr-066
+  tunnels:
+  - dst_pa: 100.0.0.65
+    vlan: 101

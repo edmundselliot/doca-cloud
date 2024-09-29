@@ -51,6 +51,30 @@ struct ipsec_sa_ctx_t {
 	bool esn_en; /* If extended sn is enable*/
 };
 
+struct geneve_encap_ctx_t {
+    uint32_t remote_ca;
+    uint32_t remote_pa;
+    rte_ether_addr next_hop_mac;
+    uint32_t vni;
+};
+
+struct geneve_decap_ctx_t {
+    uint32_t remote_ca;
+    uint32_t vni;
+};
+
+struct vlan_push_ctx_t {
+    uint32_t remote_pa;
+    uint16_t vlan_id;
+};
+
+struct ipsec_ctx_t {
+    uint32_t remote_pa;
+    uint32_t spi;
+    uint8_t key[MAX_IPSEC_KEY_LEN];
+    uint32_t key_len_bytes;
+};
+
 class PipeMgr {
 private:
     struct cloud_app_cfg_t *app_cfg;
