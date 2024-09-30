@@ -1,6 +1,9 @@
 application: doca-cloud
 version: 1.0.0
 
+# CA = customer address (VM IP address)
+# PA = provider address (host IP address)
+
 # If running on hostname, run the app on the pci/vf/vf_mac
 device_cfg:
 - hostname: doca-vr-065

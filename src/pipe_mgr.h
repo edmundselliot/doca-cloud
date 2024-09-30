@@ -18,28 +18,29 @@
 /*
     High-level pipe topology
 
-       VF tx                VF rx
-         │                    ▲
-   ┌─────▼───────┐            │
-   │tx root pipe │            │
-   └─────┬───────┘            │
-   ┌─────▼───────┐            │
-   │tx selector  │            │
-   └─────┬───────┘            │
-   ┌─────▼───────┐     ┌──────┼───────┐
-   │geneve egress│     │geneve ingress│
-   └─────┬───────┘     └──────▲───────┘
-   ┌─────▼───────┐     ┌──────┼───────┐
-   │ipsec egress │     │ipsec ingress │
-   └─────┬───────┘     └──────▲───────┘
-   ┌─────▼───────┐     ┌──────┼───────┐
-   │vlan egress  │     │vlan ingress  │
-   └─────┬───────┘     └──────▲───────┘
-         │             ┌──────┼───────┐
-         │             │rx root pipe  │
-         │             └──────▲───────┘
-         ▼                    │
-      wire tx             wire rx
+                 all packets
+                      │
+         from VF  ┌───▼───┐ from wire
+          ┌───────┼rx root┼────┐
+     ┌────▼──┐    └───────┘    │
+     │tx root│                 │
+     └───┬───┘                 │
+         │                     │
+  ┌──────▼─────┐          ┌────▼───┐
+  │geneve encap│          │vlan pop│
+  └──────┬─────┘          └────┬───┘
+         │                     │
+    ┌────▼─────┐          ┌────▼─────┐
+    │ipsec encr│          │ipsec decr│
+    └────┬─────┘          └────┬─────┘
+         │                     │
+     ┌───▼─────┐          ┌────▼───────┐
+     │vlan push│          │geneve decap│
+     └───┬─────┘          └────┬───────┘
+         │                     │
+         ▼                     ▼
+     fwd to wire           fwd to VF
+
 */
 
 struct ipsec_sa_ctx_t {
