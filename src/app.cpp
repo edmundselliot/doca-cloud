@@ -2,11 +2,13 @@
 
 DOCA_LOG_REGISTER(OFFLOAD_APP);
 
-OffloadApp::OffloadApp(std::string pf_pci, std::string core_mask, rte_ether_addr vf_mac) {
+OffloadApp::OffloadApp(struct input_cfg_t *input_cfg) {
+	this->app_cfg.input_cfg = input_cfg;
+
     DOCA_LOG_INFO("Initializing offload app");
-    this->pf_pci = pf_pci;
-    this->core_mask = core_mask;
-	memcpy(&this->vf_mac, &vf_mac, sizeof(rte_ether_addr));
+    this->pf_pci = input_cfg->host_cfg.pf_pci;
+    this->core_mask = "0x3";
+	memcpy(&this->vf_mac, &input_cfg->host_cfg.vf_mac, sizeof(rte_ether_addr));
 
 	this->pf_port_id = 0;
 	this->vf_port_id = 1;
@@ -367,51 +369,38 @@ doca_error_t OffloadApp::create_ipsec_tunnel(
 doca_error_t OffloadApp::offload_static_flows() {
 	doca_error_t result = DOCA_SUCCESS;
 
-	// For this test app, we are running on hosts:
-	// - host1: vf 60.0.0.65, pf 100.0.0.65
-	// - host2: vf 60.0.0.66, pf 100.0.0.66
-	// we will offload the flows for these in advance
-	std::string remote_pa;
-	std::string remote_ca;
-	uint32_t ingress_spi;
-	uint32_t egress_spi;
-	rte_ether_addr next_hop_mac;
+	for (auto geneve_cfg : app_cfg.input_cfg->geneve_tunnels) {
+		result = create_geneve_tunnel(
+			geneve_cfg.remote_ca,
+			geneve_cfg.remote_pa,
+			geneve_cfg.next_hop_mac,
+			geneve_cfg.vni);
 
-	if (pf_ip_addr_str == "100.0.0.66") {
-		remote_pa = "100.0.0.65";
-		remote_ca = "60.0.0.65";
-		ingress_spi = 0x111;
-		egress_spi = 0x222;
-		next_hop_mac = {0xde, 0xad, 0xbe, 0xef, 0x00, 0x01};
-	} else {
-		remote_pa = "100.0.0.66";
-		remote_ca = "60.0.0.66";
-		ingress_spi = 0x222;
-		egress_spi = 0x111;
-		next_hop_mac = {0xde, 0xad, 0xbe, 0xef, 0x00, 0x02};
-	}
-	result = create_geneve_tunnel(
-		remote_ca,
-		remote_pa,
-		next_hop_mac,
-		0x333);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create geneve tunnel: %s", doca_error_get_descr(result));
-		return result;
+		if (result != DOCA_SUCCESS) {
+			DOCA_LOG_ERR("Failed to create geneve tunnel to %s: %s",
+				geneve_cfg.remote_ca.c_str(), doca_error_get_descr(result));
+			return result;
+		}
 	}
 
-	result = create_vlan_mapping(remote_pa, 100);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create vlan mapping: %s", doca_error_get_descr(result));
-		return result;
+	for (auto ipsec_cfg : app_cfg.input_cfg->ipsec_tunnels) {
+		result = create_ipsec_tunnel(ipsec_cfg.remote_pa,
+			ipsec_cfg.dec_spi, ipsec_cfg.dec_key_data, ipsec_cfg.dec_key_len,
+			ipsec_cfg.enc_spi, ipsec_cfg.enc_key_data, ipsec_cfg.enc_key_len);
+		if (result != DOCA_SUCCESS) {
+			DOCA_LOG_ERR("Failed to create ipsec tunnel to %s: %s",
+				ipsec_cfg.remote_pa.c_str(), doca_error_get_descr(result));
+			return result;
+		}
 	}
 
-	result = create_ipsec_tunnel(remote_pa,
-		egress_spi,  (uint8_t *)"0123456789abcdef", 16,
-		ingress_spi, (uint8_t *)"0123456789abcdef", 16);
-	if (result != DOCA_SUCCESS) {
-		DOCA_LOG_ERR("Failed to create ipsec tunnel: %s", doca_error_get_descr(result));
-		return result;
+	for (auto vlan_cfg : app_cfg.input_cfg->vlan_pushes) {
+		result = create_vlan_mapping(vlan_cfg.remote_pa, vlan_cfg.vlan_id);
+		if (result != DOCA_SUCCESS) {
+			DOCA_LOG_ERR("Failed to create vlan mapping to %s: %s",
+				vlan_cfg.remote_pa.c_str(), doca_error_get_descr(result));
+			return result;
+		}
 	}
 
 	return result;

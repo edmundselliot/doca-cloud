@@ -14,7 +14,6 @@
 #include "utils.h"
 #include "main.h"
 
-#define MAX_IPSEC_KEY_LEN (32)			  /* Maximal GCM key size is 256bit==32B */
 
 /*
     High-level pipe topology
@@ -43,6 +42,15 @@
       wire tx             wire rx
 */
 
+struct ipsec_sa_ctx_t {
+	enum doca_flow_crypto_icv_len icv_length; /* ICV length */
+	enum doca_flow_crypto_key_type key_type; /* Key type */
+	uint8_t key[MAX_IPSEC_KEY_LEN]; /* Policy encryption key */
+	uint32_t salt; /* Key Salt */
+	uint32_t lifetime_threshold; /* SA lifetime threshold */
+	bool esn_en; /* If extended sn is enable*/
+};
+
 struct geneve_encap_ctx_t {
     uint32_t remote_ca;
     uint32_t remote_pa;
@@ -65,15 +73,6 @@ struct ipsec_ctx_t {
     uint32_t spi;
     uint8_t key[MAX_IPSEC_KEY_LEN];
     uint32_t key_len_bytes;
-};
-
-struct ipsec_sa_ctx_t {
-	enum doca_flow_crypto_icv_len icv_length; /* ICV length */
-	enum doca_flow_crypto_key_type key_type; /* Key type */
-	uint8_t key[MAX_IPSEC_KEY_LEN]; /* Policy encryption key */
-	uint32_t salt; /* Key Salt */
-	uint32_t lifetime_threshold; /* SA lifetime threshold */
-	bool esn_en; /* If extended sn is enable*/
 };
 
 class PipeMgr {

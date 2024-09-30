@@ -70,7 +70,7 @@ private:
         uint32_t dec_spi, uint8_t *dec_key_data, uint32_t dec_key_len);
 
 public:
-    OffloadApp(std::string pf_pci, std::string core_mask, rte_ether_addr vf_mac);
+    OffloadApp(struct input_cfg_t *input_cfg);
     ~OffloadApp();
 
     doca_error_t init();
