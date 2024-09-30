@@ -150,12 +150,12 @@ doca_error_t PipeMgr::tx_vlan_pipe_create() {
     fwd_to_wire.type = DOCA_FLOW_FWD_PORT;
     fwd_to_wire.port_id = pf_port_id;
 
-    struct doca_flow_actions actions = {0};
-	struct doca_flow_actions *actions_arr[] = {&actions};
+    struct doca_flow_actions actions = {};
     actions.has_push = true;
 	actions.push.type = DOCA_FLOW_PUSH_ACTION_VLAN;
 	actions.push.vlan.eth_type = rte_cpu_to_be_16(DOCA_FLOW_ETHER_TYPE_VLAN);
 	actions.push.vlan.vlan_hdr.tci = rte_cpu_to_be_16(0xffff);
+	struct doca_flow_actions *actions_arr[] = {&actions};
 
     struct doca_flow_pipe_cfg *pipe_cfg;
 	IF_SUCCESS(result, doca_flow_pipe_cfg_create(&pipe_cfg, pf_port));
@@ -165,7 +165,6 @@ doca_error_t PipeMgr::tx_vlan_pipe_create() {
     IF_SUCCESS(result, doca_flow_pipe_cfg_set_actions(pipe_cfg, actions_arr, nullptr, nullptr, 1));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_dip, nullptr));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
-	// TODO: fwd-miss to a pipe which forwards to wire
 	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_to_wire, &fwd_rss, &tx_vlan_pipe));
     if (pipe_cfg)
 		doca_flow_pipe_cfg_destroy(pipe_cfg);
@@ -454,8 +453,8 @@ doca_error_t PipeMgr::tx_vlan_pipe_entry_create(struct vlan_push_ctx_t* vlan_ctx
 
 	struct doca_flow_pipe_entry *new_entry;
 
-	struct doca_flow_match match_dst_pa = {};
-	match_dst_pa.outer.ip4.dst_ip = vlan_ctx->remote_pa;
+	struct doca_flow_match match_dip = {};
+	match_dip.outer.ip4.dst_ip = vlan_ctx->remote_pa;
 
 	struct doca_flow_actions actions = {};
 	actions.has_push = true;
@@ -463,7 +462,7 @@ doca_error_t PipeMgr::tx_vlan_pipe_entry_create(struct vlan_push_ctx_t* vlan_ctx
 	actions.push.vlan.eth_type = rte_cpu_to_be_16(DOCA_FLOW_ETHER_TYPE_VLAN);
 	actions.push.vlan.vlan_hdr.tci = rte_cpu_to_be_16(vlan_ctx->vlan_id);
 
-	doca_error_t result = add_single_entry(0, tx_vlan_pipe, pf_port, &match_dst_pa, &actions, NULL, NULL, &new_entry);
+	doca_error_t result = add_single_entry(0, tx_vlan_pipe, pf_port, &match_dip, &actions, NULL, NULL, &new_entry);
 	if (result != DOCA_SUCCESS) {
 		DOCA_LOG_ERR("Failed to add entry to TX_VLAN_PIPE: %s", doca_error_get_descr(result));
 		return result;
@@ -480,8 +479,7 @@ doca_error_t PipeMgr::rx_ipsec_pipe_create() {
 	match_remote_pa_esp.outer.l3_type = DOCA_FLOW_L3_TYPE_IP4;
 	match_remote_pa_esp.outer.ip4.src_ip = 0xffffffff;
 	match_remote_pa_esp.tun.type = DOCA_FLOW_TUN_ESP;
-	// TODO: SPI matching is not working. Ignore for now
-	// match_remote_pa_esp.tun.esp_spi = 0xffffffff;
+	match_remote_pa_esp.tun.esp_spi = 0xffffffff;
 
 	struct doca_flow_actions actions = {};
 	actions.crypto.action_type = DOCA_FLOW_CRYPTO_ACTION_DECRYPT;
@@ -521,7 +519,7 @@ doca_error_t PipeMgr::rx_ipsec_pipe_entry_create(uint32_t remote_pa, uint32_t sp
 	match_remote_pa_esp.outer.l3_type = DOCA_FLOW_L3_TYPE_IP4;
 	match_remote_pa_esp.outer.ip4.src_ip = remote_pa;
 	match_remote_pa_esp.tun.type = DOCA_FLOW_TUN_ESP;
-	// match_remote_pa_esp.tun.esp_spi = spi;
+	match_remote_pa_esp.tun.esp_spi = rte_cpu_to_be_32(spi);
 
 	struct doca_flow_actions actions = {};
 	actions.crypto.action_type = DOCA_FLOW_CRYPTO_ACTION_DECRYPT;
