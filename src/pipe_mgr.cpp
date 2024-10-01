@@ -356,8 +356,8 @@ doca_error_t PipeMgr::rx_geneve_pipe_create() {
 
 	struct doca_flow_actions decap_action = {};
 	decap_action.decap_type = DOCA_FLOW_RESOURCE_TYPE_NON_SHARED;
-	decap_action.decap_cfg.is_l2 = true;
-	decap_action.decap_cfg.eth.type = UINT16_MAX;
+	decap_action.decap_cfg.is_l2 = false;
+	decap_action.decap_cfg.eth.type = RTE_BE16(DOCA_FLOW_ETHER_TYPE_IPV4);
 	rte_ether_addr_copy(&pf_mac, (struct rte_ether_addr *)&decap_action.decap_cfg.eth.src_mac);
 	rte_ether_addr_copy(&vf_mac, (struct rte_ether_addr *)&decap_action.decap_cfg.eth.dst_mac);
 	struct doca_flow_actions *actions_arr[] = { &decap_action };
@@ -397,7 +397,7 @@ doca_error_t PipeMgr::rx_geneve_pipe_entry_create(geneve_decap_ctx_t *decap_ctx)
 	struct doca_flow_actions decap_action = {};
 	decap_action.decap_type = DOCA_FLOW_RESOURCE_TYPE_NON_SHARED;
 	decap_action.decap_cfg.is_l2 = false;
-	decap_action.decap_cfg.eth.type = UINT16_MAX;
+	decap_action.decap_cfg.eth.type = RTE_BE16(DOCA_FLOW_ETHER_TYPE_IPV4);
 
 	doca_error_t result = add_single_entry(0, rx_geneve_pipe, pf_port, &match_geneve, &decap_action, NULL, NULL, &new_entry);
 	if (result != DOCA_SUCCESS) {
