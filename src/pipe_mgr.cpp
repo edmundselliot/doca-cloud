@@ -165,8 +165,8 @@ doca_error_t PipeMgr::tx_vlan_pipe_create() {
     IF_SUCCESS(result, doca_flow_pipe_cfg_set_actions(pipe_cfg, actions_arr, nullptr, nullptr, 1));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_dip, nullptr));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
-	// VLAN push is optional. On both hit and miss, forward to wire.
-	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_to_wire, &fwd_to_wire, &tx_vlan_pipe));
+	// On miss, forward to RSS for monitoring/logging
+	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_to_wire, &fwd_rss, &tx_vlan_pipe));
     if (pipe_cfg)
 		doca_flow_pipe_cfg_destroy(pipe_cfg);
 
