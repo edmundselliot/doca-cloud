@@ -143,7 +143,7 @@ doca_error_t PipeMgr::tx_vlan_pipe_create() {
     doca_error_t result = DOCA_SUCCESS;
 
 	struct doca_flow_match match_dip = {};
-    match_dip.parser_meta.outer_l3_type = DOCA_FLOW_L3_META_IPV4;
+    match_dip.outer.l3_type = DOCA_FLOW_L3_TYPE_IP4;
     match_dip.outer.ip4.dst_ip = 0xffffffff;
 
 	struct doca_flow_fwd fwd_to_wire = {};
@@ -165,7 +165,8 @@ doca_error_t PipeMgr::tx_vlan_pipe_create() {
     IF_SUCCESS(result, doca_flow_pipe_cfg_set_actions(pipe_cfg, actions_arr, nullptr, nullptr, 1));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_dip, nullptr));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
-	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_to_wire, &fwd_rss, &tx_vlan_pipe));
+	// VLAN push is optional. On both hit and miss, forward to wire.
+	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_to_wire, &fwd_to_wire, &tx_vlan_pipe));
     if (pipe_cfg)
 		doca_flow_pipe_cfg_destroy(pipe_cfg);
 
@@ -270,10 +271,10 @@ doca_error_t PipeMgr::tx_geneve_pipe_create()
 
 	struct doca_flow_actions actions = {};
 	actions.encap_type = DOCA_FLOW_RESOURCE_TYPE_NON_SHARED;
-	actions.encap_cfg.is_l2 = true;
+	actions.encap_cfg.is_l2 = false;
 	actions.encap_cfg.encap.tun.type = DOCA_FLOW_TUN_GENEVE;
 	actions.encap_cfg.encap.tun.geneve.vni = 0xffffffff;
-	actions.encap_cfg.encap.tun.geneve.next_proto = rte_cpu_to_be_16(DOCA_FLOW_ETHER_TYPE_TEB);
+	actions.encap_cfg.encap.tun.geneve.next_proto = RTE_BE16(DOCA_FLOW_ETHER_TYPE_IPV4);
 	rte_ether_addr_copy(&pf_mac, (struct rte_ether_addr *)&actions.encap_cfg.encap.outer.eth.src_mac);
 	for (int i = 0; i < 6; i++) {
 		actions.encap_cfg.encap.outer.eth.dst_mac[i] = 0xff;
@@ -296,6 +297,7 @@ doca_error_t PipeMgr::tx_geneve_pipe_create()
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_actions(pipe_cfg, actions_ptr_arr, NULL, NULL, 1));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_monitor(pipe_cfg, &monitor_count));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
+	// On miss, forward to RSS for monitoring/logging
 	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_hit, &fwd_rss, &tx_geneve_pipe));
 	if (pipe_cfg)
 		doca_flow_pipe_cfg_destroy(pipe_cfg);
@@ -316,7 +318,6 @@ doca_error_t PipeMgr::tx_geneve_pipe_entry_create(geneve_encap_ctx_t *encap_ctx)
 	actions.encap_type = DOCA_FLOW_RESOURCE_TYPE_NON_SHARED;
 	actions.encap_cfg.is_l2 = false;
 	actions.encap_cfg.encap.tun.type = DOCA_FLOW_TUN_GENEVE;
-	actions.encap_cfg.encap.tun.geneve.next_proto = UINT16_MAX;
 	rte_ether_addr_copy(&pf_mac, (struct rte_ether_addr *)&actions.encap_cfg.encap.outer.eth.src_mac);
 	actions.encap_cfg.encap.outer.l3_type = DOCA_FLOW_L3_TYPE_IP4;
 	actions.encap_cfg.encap.outer.ip4.src_ip = pf_pa;
@@ -372,7 +373,8 @@ doca_error_t PipeMgr::rx_geneve_pipe_create() {
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_actions(pipe_cfg, actions_arr, actions_arr, NULL, 1));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_monitor(pipe_cfg, &monitor_count));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
-	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_to_vf, &fwd_rss /* change after debug */, &rx_geneve_pipe));
+	// On miss, forward to RSS for monitoring/logging
+	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_to_vf, &fwd_rss, &rx_geneve_pipe));
 	if (pipe_cfg)
 		doca_flow_pipe_cfg_destroy(pipe_cfg);
 
@@ -575,7 +577,8 @@ doca_error_t PipeMgr::tx_ipsec_pipe_create() {
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_dir_info(pipe_cfg, DOCA_FLOW_DIRECTION_HOST_TO_NETWORK));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
 	IF_SUCCESS(result, doca_flow_pipe_cfg_set_enable_strict_matching(pipe_cfg, true));
-	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_vlan_pipe, &fwd_vlan_pipe, &tx_ipsec_pipe));
+	// On miss, forward to RSS for monitoring/logging
+	IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_vlan_pipe, &fwd_rss, &tx_ipsec_pipe));
     if (pipe_cfg)
 		doca_flow_pipe_cfg_destroy(pipe_cfg);
 

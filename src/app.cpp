@@ -385,8 +385,8 @@ doca_error_t OffloadApp::offload_static_flows() {
 
 	for (auto ipsec_cfg : app_cfg.input_cfg->ipsec_tunnels) {
 		result = create_ipsec_tunnel(ipsec_cfg.remote_pa,
-			ipsec_cfg.dec_spi, ipsec_cfg.dec_key_data, ipsec_cfg.dec_key_len,
-			ipsec_cfg.enc_spi, ipsec_cfg.enc_key_data, ipsec_cfg.enc_key_len);
+			ipsec_cfg.enc_spi, ipsec_cfg.enc_key_data, ipsec_cfg.enc_key_len,
+			ipsec_cfg.dec_spi, ipsec_cfg.dec_key_data, ipsec_cfg.dec_key_len);
 		if (result != DOCA_SUCCESS) {
 			DOCA_LOG_ERR("Failed to create ipsec tunnel to %s: %s",
 				ipsec_cfg.remote_pa.c_str(), doca_error_get_descr(result));

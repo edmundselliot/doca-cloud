@@ -23,11 +23,13 @@ geneve_cfg:
     ca: 60.0.0.66
     pa: 100.0.0.66
     vni: 100
+    next_hop: 94:6d:ae:af:3f:cc
 - hostname: doca-vr-066
   tunnels:
     ca: 60.0.0.65
     pa: 100.0.0.65
     vni: 100
+    next_hop: 94:6d:ae:a9:b0:b0
 
 # tx - match on dst_pa, encr with encr_spi/encr_key
 # rx - match on decr_spi/dst_pa, decr with decr_key

@@ -42,9 +42,13 @@ doca_error_t parse_input_cfg(std::string filename, struct input_cfg_t *cfg) {
             geneve_tnl_ctx_t geneve_ctx;
             geneve_ctx.remote_ca = node["tunnels"]["ca"].as<std::string>();
             geneve_ctx.remote_pa = node["tunnels"]["pa"].as<std::string>();
-            // Assuming next_hop_mac is not provided in the YAML, set it to zero or a default value
-            memset(geneve_ctx.next_hop_mac.addr_bytes, 0, sizeof(geneve_ctx.next_hop_mac.addr_bytes));
             geneve_ctx.vni = node["tunnels"]["vni"].as<uint32_t>();
+            int parsed_correct = rte_ether_unformat_addr(node["tunnels"]["next_hop"].as<std::string>().c_str(), &geneve_ctx.next_hop_mac);
+            if (parsed_correct < 0) {
+                DOCA_LOG_ERR("Failed to parse MAC address %s", node["tunnels"]["next_hop"].as<std::string>().c_str());
+                return DOCA_ERROR_INVALID_VALUE;
+            }
+
             cfg->geneve_tunnels.push_back(geneve_ctx);
         }
     }
