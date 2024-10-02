@@ -9,7 +9,6 @@ source_files = [
 	'src/main.cpp',
     'src/app.cpp',
 	'src/pipe_mgr.cpp',
-    'src/control_path.cpp',
     'src/utils.cpp',
 	'src/parse_cfg.cpp',
     samples_dir_path + '/common.c',

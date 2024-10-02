@@ -14,7 +14,6 @@
 #include "utils.h"
 #include "common.h"
 
-#include "control_path.h"
 #include "pipe_mgr.h"
 #include "main.h"
 
@@ -43,7 +42,6 @@ private:
     rte_ether_addr pf_mac;
     rte_ether_addr vf_repr_mac;
 
-    ControlPath control_path = ControlPath();
     PipeMgr pipe_mgr = PipeMgr();
 
     doca_error_t init_doca_flow();

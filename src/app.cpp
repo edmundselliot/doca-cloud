@@ -258,8 +258,7 @@ doca_error_t OffloadApp::handle_packet(struct rte_mbuf *pkt, uint32_t queue_id) 
 		handle_arp(pf_port_id, queue_id, pkt);
 	}
 
-	// need-geneve
-
+	// Monitoring, logging, dynamic flow creation, etc.
 
 	rte_pktmbuf_dump(stdout, pkt, pkt->pkt_len);
 	return DOCA_SUCCESS;
