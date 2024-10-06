@@ -80,7 +80,7 @@ flowchart LR
     match: outer.eth_vlan.tci
     action: VLAN pop]
 
-    E((to wire))
+    E((to vf))
 
     A -->|port_meta == PF| D
     D --> C
