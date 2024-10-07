@@ -18,28 +18,33 @@
 /*
     High-level pipe topology
 
-                 all packets
-                      │
-         from VF  ┌───▼───┐ from wire
-          ┌───────┼rx root┼────┐
-     ┌────▼──┐    └───────┘    │
-     │tx root│                 │
-     └───┬───┘                 │
-         │                     │
-  ┌──────▼─────┐          ┌────▼───┐
-  │geneve encap│          │vlan pop│
-  └──────┬─────┘          └────┬───┘
-         │                     │
-    ┌────▼─────┐          ┌────▼─────┐
-    │ipsec encr│          │ipsec decr│
-    └────┬─────┘          └────┬─────┘
-         │                     │
-     ┌───▼─────┐          ┌────▼───────┐
-     │vlan push│          │geneve decap│
-     └───┬─────┘          └────┬───────┘
-         │                     │
-         ▼                     ▼
-     fwd to wire           fwd to VF
+
+             all packets
+                  │
+     from VF  ┌───▼───┐ from wire
+     ┌────────┤rx root├────┐
+ ┌───▼───┐    └───────┘    │
+ │tx root│                 │
+ └───┬───┘                 │
+     │                     │
+ ┌───▼────────┐       ┌────▼───┐
+ │geneve encap│       │vlan pop│
+ └───┬────────┘       └────┬───┘
+     │                     │
+ ┌───▼──────┐         ┌────▼─────┐
+ │ipsec encr│         │ipsec decr│
+ └───┬──────┘         └────┬─────┘
+     │                     │
+ ┌───▼─────┐          ┌────▼─────┐
+ │vlan push│          │ipsec synd│
+ └───┬─────┘          └────┬─────┘
+     │                     │
+     ▼                ┌────▼───────┐
+ fwd to wire          │geneve decap│
+                      └────┬───────┘
+                           │
+                           ▼
+                       fwd to VF
 
 */
 
@@ -98,6 +103,7 @@ private:
     struct doca_flow_pipe *rx_root_pipe;
     struct doca_flow_pipe *rx_geneve_pipe;
     struct doca_flow_pipe *rx_ipsec_pipe;
+    struct doca_flow_pipe *rx_ipsec_synd_pipe;
     struct doca_flow_pipe *rx_vlan_pipe;
 
     struct doca_flow_pipe_entry *rss_pipe_default_entry;
@@ -105,6 +111,8 @@ private:
     struct doca_flow_pipe_entry *rx_root_pipe_from_vf_entry;
     struct doca_flow_pipe_entry *rx_root_pipe_from_pf_entry;
     struct doca_flow_pipe_entry *rx_vlan_pipe_default_entry;
+    const static uint8_t nb_ipsec_syndromes = 2;
+    struct doca_flow_pipe_entry *rx_ipsec_syndrome_entries[nb_ipsec_syndromes];
 
     struct doca_flow_monitor monitor_count = {};
     struct doca_flow_fwd fwd_drop = {};
@@ -128,6 +136,7 @@ private:
     doca_error_t tx_vlan_pipe_create();
     doca_error_t rx_root_pipe_create();
     doca_error_t rx_geneve_pipe_create();
+    doca_error_t rx_ipsec_synd_pipe_create();
     doca_error_t rx_ipsec_pipe_create();
     doca_error_t rx_vlan_pipe_create();
 

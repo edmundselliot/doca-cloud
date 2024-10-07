@@ -2,16 +2,15 @@
 
 ### Prereqs
 ```sh
-# DOCA and DPDK must be installed
-pkg-config --modversion doca-flow doca-common doca-dpdk-bridge libdpdk
-# yaml-cpp used to parse input
+# DOCA and DPDK must be installed, verify with
+pkg-config --modversion doca-common doca-flow doca-dpdk-bridge libdpdk
+
+# yaml-cpp used to parse input, install it work
 sudo apt-get install libyaml-cpp-dev
 ```
 
 ### Build
 ```sh
-# Following packages must be in PKG_CONFIG_PATH:
-#   doca-flow, doca-common, doca-dpdk-bridge, libdpdk, yaml-cpp
 meson build
 ninja -C build
 ```
@@ -75,19 +74,24 @@ flowchart LR
     match: outer.src_ip, tun.spi
     action: ipsec decrypt]
 
-    D[rx vlan
+    D[rx ipsec synd
+    -----------------------
+    match: parser_meta.ipsec_syndrome
+    ]
+
+    E[rx vlan
     -----------------------
     match: outer.eth_vlan.tci
     action: VLAN pop]
 
-    E((to vf))
+    F((to vf))
 
-    A -->|port_meta == PF| D
-    D --> C
-    C --> B
-    B --> E
+    A -->|port_meta == PF| E
+    E --> C
+    C --> D
+    D --> B
+    B --> F
 ```
 
 ### TODO
 1. ARP responder
-2. IPSEC syndrome pipes

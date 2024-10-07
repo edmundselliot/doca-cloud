@@ -430,7 +430,7 @@ doca_error_t OffloadApp::run() {
 
 	while(1) {
 		pipe_mgr.print_stats();
-		sleep(5);
+		sleep(2);
 	}
 
 	return result;
