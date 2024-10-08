@@ -49,12 +49,12 @@
 */
 
 struct ipsec_sa_ctx_t {
-	enum doca_flow_crypto_icv_len icv_length; /* ICV length */
-	enum doca_flow_crypto_key_type key_type; /* Key type */
-	uint8_t key[MAX_IPSEC_KEY_LEN]; /* Policy encryption key */
-	uint32_t salt; /* Key Salt */
-	uint32_t lifetime_threshold; /* SA lifetime threshold */
-	bool esn_en; /* If extended sn is enable*/
+    enum doca_flow_crypto_icv_len icv_length; /* ICV length */
+    enum doca_flow_crypto_key_type key_type; /* Key type */
+    uint8_t key[MAX_IPSEC_KEY_LEN]; /* Policy encryption key */
+    uint32_t salt; /* Key Salt */
+    uint32_t lifetime_threshold; /* SA lifetime threshold */
+    bool esn_en; /* If extended sn is enable*/
 };
 
 struct geneve_encap_ctx_t {
@@ -119,7 +119,7 @@ private:
     struct doca_flow_monitor monitor_count = {};
     struct doca_flow_fwd fwd_drop = {};
     struct doca_flow_fwd fwd_rss = {};
-	struct doca_flow_actions geneve_encap_actions = {};
+    struct doca_flow_actions geneve_encap_actions = {};
 
     struct ipsec_sa_ctx_t dummy_encap_decap_sa_ctx = {};
     uint32_t dummy_encap_crypto_id;

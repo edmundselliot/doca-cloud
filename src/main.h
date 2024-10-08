@@ -21,7 +21,7 @@
 #include "utils.h"
 #include "common.h"
 
-#define MAX_IPSEC_KEY_LEN (32)			  /* Maximal GCM key size is 256bit==32B */
+#define MAX_IPSEC_KEY_LEN (32)              /* Maximal GCM key size is 256bit==32B */
 
 struct host_cfg_t {
     std::string hostname;
@@ -66,7 +66,7 @@ struct input_cfg_t {
 struct cloud_app_cfg_t {
     struct input_cfg_t *input_cfg; //!< Input configuration details
     struct application_dpdk_config dpdk_cfg; //!< Configuration details of DPDK ports and queues
-	std::string core_mask; //!< EAL core mask
+    std::string core_mask; //!< EAL core mask
     uint32_t max_ipsec_sessions;
 };
 
