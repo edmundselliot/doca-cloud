@@ -111,7 +111,7 @@ private:
     struct doca_flow_pipe_entry *rx_root_pipe_from_vf_entry;
     struct doca_flow_pipe_entry *rx_root_pipe_arp_req;
     struct doca_flow_pipe_entry *rx_root_pipe_from_pf_entry;
-    struct doca_flow_pipe_entry *rx_root_pipe_default_drop;
+    struct doca_flow_pipe_entry *rx_root_pipe_unknown;
     struct doca_flow_pipe_entry *rx_vlan_pipe_default_entry;
     const static uint8_t nb_ipsec_syndromes = 2;
     struct doca_flow_pipe_entry *rx_ipsec_syndrome_entries[nb_ipsec_syndromes];

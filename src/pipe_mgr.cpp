@@ -202,13 +202,12 @@ doca_error_t PipeMgr::tx_root_pipe_create() {
     IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_arp, nullptr));
     IF_SUCCESS(result, doca_flow_pipe_cfg_set_monitor(pipe_cfg, &monitor_count));
     IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
-    // Datapath will go to geneve pipe, only ARP is
+    // Datapath will go to geneve pipe through the miss path, ARP replies will match the entry and go to VF
     IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_vf, &fwd_tx_geneve, &tx_root_pipe));
     if (pipe_cfg)
         doca_flow_pipe_cfg_destroy(pipe_cfg);
     monitored_pipe_misses.push_back(std::make_pair("TX_ROOT_PIPE", tx_root_pipe));
 
-    // Forward ARP replies to the VF
     IF_SUCCESS(result,
         add_single_entry(0, tx_root_pipe, pf_port, nullptr, nullptr, nullptr, nullptr, &tx_root_pipe_arp_reply));
     monitored_pipe_entries.push_back(std::make_pair("TX_ROOT_PIPE_ARP_REPLIES", tx_root_pipe_arp_reply));
@@ -323,8 +322,8 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
                         &monitor_count,
                         &fwd_rss,
                         nullptr,
-                        &rx_root_pipe_default_drop));
-    monitored_pipe_entries.push_back(std::make_pair("RX_ROOT_PIPE_DEFAULT_DROP", rx_root_pipe_default_drop));
+                        &rx_root_pipe_unknown));
+    monitored_pipe_entries.push_back(std::make_pair("RX_ROOT_PIPE_UNKNOWN", rx_root_pipe_unknown));
 
     return result;
 }
