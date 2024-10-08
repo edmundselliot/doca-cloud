@@ -14,7 +14,6 @@ OffloadApp::OffloadApp(struct input_cfg_t *input_cfg) {
     this->vf_port_id = 1;
 
     this->app_cfg.dpdk_cfg.port_config.nb_ports = 2;
-    this->app_cfg.dpdk_cfg.port_config.nb_hairpin_q = 0;
     this->app_cfg.dpdk_cfg.port_config.switch_mode = true;
     this->app_cfg.dpdk_cfg.port_config.enable_mbuf_metadata = true;
     this->app_cfg.dpdk_cfg.port_config.isolated_mode = true;
@@ -42,7 +41,7 @@ doca_error_t OffloadApp::init() {
     IF_SUCCESS(result, start_port(pf_port_id, pf_dev, &pf_port));
     IF_SUCCESS(result, start_port(vf_port_id, nullptr, &vf_port));
 
-    pipe_mgr.init(&app_cfg, pf_port, vf_port, pf_port_id, vf_port_id, pf_ip_addr.ipv4_addr, &pf_mac, &vf_mac);
+    IF_SUCCESS(result, pipe_mgr.init(&app_cfg, pf_port, vf_port, pf_port_id, vf_port_id, pf_ip_addr.ipv4_addr, &pf_mac, &vf_mac));
 
     return result;
 }
@@ -71,7 +70,7 @@ doca_error_t OffloadApp::init_dpdk() {
         }
         return DOCA_ERROR_BAD_STATE;
     }
-
+  
     // This can't be set until EAL init because it uses rte_lcore_count()
     app_cfg.dpdk_cfg.port_config.nb_queues = rte_lcore_count();
 
@@ -159,7 +158,7 @@ doca_error_t OffloadApp::init_doca_flow(void)
     IF_SUCCESS(result, doca_flow_cfg_set_nr_counters(flow_cfg, 1024));
     IF_SUCCESS(result, doca_flow_cfg_set_nr_shared_resource(
         flow_cfg, app_cfg.max_ipsec_sessions + 2, DOCA_FLOW_SHARED_RESOURCE_IPSEC_SA));
-    IF_SUCCESS(result, doca_flow_cfg_set_mode_args(flow_cfg, "switch,hws"));
+    IF_SUCCESS(result, doca_flow_cfg_set_mode_args(flow_cfg, "switch,hws,isolated,expert"));
     IF_SUCCESS(result, doca_flow_cfg_set_cb_entry_process(flow_cfg, OffloadApp::check_for_valid_entry));
     IF_SUCCESS(result, doca_flow_cfg_set_default_rss(flow_cfg, &rss_config));
     IF_SUCCESS(result, doca_flow_init(flow_cfg));
@@ -219,7 +218,6 @@ doca_error_t OffloadApp::handle_arp(uint32_t port_id, uint32_t queue_id, struct 
     rte_eth_macaddr_get(port_id, &response_eth_hdr->src_addr);
     response_eth_hdr->dst_addr = request_eth_hdr->src_addr;
     response_eth_hdr->ether_type = RTE_BE16(DOCA_FLOW_ETHER_TYPE_ARP);
-
     response_arp_hdr->arp_hardware = RTE_BE16(RTE_ARP_HRD_ETHER);
     response_arp_hdr->arp_protocol = RTE_BE16(RTE_ETHER_TYPE_IPV4);
     response_arp_hdr->arp_hlen = RTE_ETHER_ADDR_LEN;
@@ -230,9 +228,7 @@ doca_error_t OffloadApp::handle_arp(uint32_t port_id, uint32_t queue_id, struct 
     response_arp_hdr->arp_data.arp_sip = request_arp_hdr->arp_data.arp_tip;
     response_arp_hdr->arp_data.arp_tip = request_arp_hdr->arp_data.arp_sip;
 
-    // This ARP reply will go to the rx_root pipe.
-    rte_pktmbuf_dump(stdout, response_pkt, response_pkt->pkt_len);
-
+    // This ARP reply will go to the tx_root pipe.
     uint16_t nb_tx_packets = rte_eth_tx_burst(port_id, queue_id, &response_pkt, 1);
     if (nb_tx_packets != 1) {
         DOCA_LOG_WARN("ARP reinject: rte_eth_tx_burst returned %d", nb_tx_packets);
@@ -257,10 +253,11 @@ doca_error_t OffloadApp::handle_packet(struct rte_mbuf *pkt, uint32_t queue_id) 
     if (ether_type == DOCA_FLOW_ETHER_TYPE_ARP) {
         handle_arp(pf_port_id, queue_id, pkt);
     }
+    else {
+        // Monitoring, logging, dynamic flow creation, etc.
+        rte_pktmbuf_dump(stdout, pkt, pkt->pkt_len);
+    }
 
-    // Monitoring, logging, dynamic flow creation, etc.
-
-    rte_pktmbuf_dump(stdout, pkt, pkt->pkt_len);
     return DOCA_SUCCESS;
 }
 
