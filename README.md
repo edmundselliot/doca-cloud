@@ -48,13 +48,15 @@ flowchart LR
     match: outer.dst_ip
     action: VLAN push]
 
-    F((to wire))
+    VF((from vf))
+    WIRE((to wire))
 
+    VF --> A
     A -->|port_meta == VF| B
     B --> C
     C --> D
     D --> E
-    E --> F
+    E --> WIRE
 ```
 
 ### Ingress datapath
@@ -84,14 +86,37 @@ flowchart LR
     match: outer.eth_vlan.tci
     action: VLAN pop]
 
-    F((to vf))
+    WIRE((from wire))
+    VF((to vf))
 
+    WIRE --> A
     A -->|port_meta == PF| E
     E --> C
     C --> D
     D --> B
-    B --> F
+    B --> VF
 ```
 
-### TODO
-1. ARP responder
+### ARP responder datapath
+```mermaid
+flowchart LR
+    A[rx root
+    --------------------
+    match: ethertype]
+
+    B[tx root
+    -------------
+    match: ethertype]
+
+    RSS((DOCA app
+    --------------------
+    replies using fake MAC))
+
+    VFTX((to vf))
+    VFRX((from vf))
+
+    VFRX --> A
+    A -->|arp request| RSS
+    RSS -->|arp response| B
+    B -->|arp response| VFTX
+```

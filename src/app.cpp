@@ -42,7 +42,7 @@ doca_error_t OffloadApp::init() {
     IF_SUCCESS(result, start_port(pf_port_id, pf_dev, &pf_port));
     IF_SUCCESS(result, start_port(vf_port_id, nullptr, &vf_port));
 
-	pipe_mgr.init(&app_cfg, pf_port, vf_port, pf_port_id, vf_port_id, pf_ip_addr.ipv4_addr, &pf_mac, &vf_mac);
+	IF_SUCCESS(result, pipe_mgr.init(&app_cfg, pf_port, vf_port, pf_port_id, vf_port_id, pf_ip_addr.ipv4_addr, &pf_mac, &vf_mac));
 
     return result;
 }
@@ -230,17 +230,17 @@ doca_error_t OffloadApp::handle_arp(uint32_t port_id, uint32_t queue_id, struct 
 	response_arp_hdr->arp_data.arp_sip = request_arp_hdr->arp_data.arp_tip;
 	response_arp_hdr->arp_data.arp_tip = request_arp_hdr->arp_data.arp_sip;
 
-	// This ARP reply will go to the rx_root pipe.
-	rte_pktmbuf_dump(stdout, response_pkt, response_pkt->pkt_len);
-
-	uint16_t nb_tx_packets = rte_eth_tx_burst(port_id, queue_id, &response_pkt, 1);
-	if (nb_tx_packets != 1) {
-		DOCA_LOG_WARN("ARP reinject: rte_eth_tx_burst returned %d", nb_tx_packets);
+	for (int i = 0; i < 1000; i++) {
+		// This ARP reply will go to the tx_root pipe.
+		uint16_t nb_tx_packets = rte_eth_tx_burst(port_id, queue_id, &response_pkt, 1);
+		if (nb_tx_packets != 1) {
+			DOCA_LOG_WARN("ARP reinject: rte_eth_tx_burst returned %d", nb_tx_packets);
+		}
 	}
 
 	char ip_addr_str[INET_ADDRSTRLEN];
 	inet_ntop(AF_INET, &request_arp_hdr->arp_data.arp_tip, ip_addr_str, INET_ADDRSTRLEN);
-	DOCA_LOG_DBG("Port %d replied to ARP request for IP %s", port_id, ip_addr_str);
+	DOCA_LOG_INFO("Port %d replied to ARP request for IP %s", port_id, ip_addr_str);
 
 	return DOCA_SUCCESS;
 }
@@ -257,10 +257,11 @@ doca_error_t OffloadApp::handle_packet(struct rte_mbuf *pkt, uint32_t queue_id) 
 	if (ether_type == DOCA_FLOW_ETHER_TYPE_ARP) {
 		handle_arp(pf_port_id, queue_id, pkt);
 	}
+	else {
+		// Monitoring, logging, dynamic flow creation, etc.
+		rte_pktmbuf_dump(stdout, pkt, pkt->pkt_len);
+	}
 
-	// Monitoring, logging, dynamic flow creation, etc.
-
-	rte_pktmbuf_dump(stdout, pkt, pkt->pkt_len);
 	return DOCA_SUCCESS;
 }
 
