@@ -514,8 +514,7 @@ doca_error_t PipeMgr::rx_vlan_pipe_create() {
 
     IF_SUCCESS(result,
         add_single_entry(0, rx_vlan_pipe, pf_port, nullptr, nullptr, nullptr, nullptr, &rx_vlan_pipe_default_entry));
-    if (result == DOCA_SUCCESS)
-        monitored_pipe_entries.push_back(std::make_pair("RX_VLAN_PIPE_POP", rx_vlan_pipe_default_entry));
+    monitored_pipe_entries.push_back(std::make_pair("RX_VLAN_PIPE_POP", rx_vlan_pipe_default_entry));
 
     return result;
 }
@@ -819,10 +818,6 @@ doca_error_t PipeMgr::create_ipsec_sa(struct ipsec_sa_ctx_t *ipsec_sa_ctx, uint3
     cfg.ipsec_sa_cfg.key_cfg.key = reinterpret_cast<uint32_t*>(&ipsec_sa_ctx->key);
     cfg.ipsec_sa_cfg.sn_initial = 1;
     cfg.ipsec_sa_cfg.esn_en = ipsec_sa_ctx->esn_en;
-    // if (!app_cfg->sw_sn_inc_enable) {
-    //     cfg.ipsec_sa_cfg.sn_offload_type = DOCA_FLOW_CRYPTO_SN_OFFLOAD_INC;
-    //     cfg.ipsec_sa_cfg.lifetime_threshold = ipsec_sa_ctx->lifetime_threshold;
-    // }
 
     doca_error_t result = doca_flow_shared_resource_set_cfg(DOCA_FLOW_SHARED_RESOURCE_IPSEC_SA, crypto_id, &cfg);
     if (result != DOCA_SUCCESS) {

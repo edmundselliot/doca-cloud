@@ -70,6 +70,9 @@ doca_error_t OffloadApp::init_dpdk() {
         }
         return DOCA_ERROR_BAD_STATE;
     }
+  
+    // This can't be set until EAL init because it uses rte_lcore_count()
+    app_cfg.dpdk_cfg.port_config.nb_queues = rte_lcore_count();
 
     return DOCA_SUCCESS;
 }
@@ -190,7 +193,7 @@ void OffloadApp::check_for_valid_entry(doca_flow_pipe_entry *entry,
 }
 
 doca_error_t OffloadApp::handle_arp(uint32_t port_id, uint32_t queue_id, struct rte_mbuf *arp_req_pkt) {
-    struct rte_ether_hdr *request_eth_hdr = rte_pktmbuf_mtod(arp_req_pkt, rte_ether_hdr *);
+    struct rte_ether_hdr *request_eth_hdr = rte_pktmbuf_mtod(arp_req_pkt, struct rte_ether_hdr *);
     struct rte_arp_hdr *request_arp_hdr = (rte_arp_hdr *)&request_eth_hdr[1];
 
     uint16_t arp_op = RTE_BE16(request_arp_hdr->arp_opcode);
@@ -205,7 +208,7 @@ doca_error_t OffloadApp::handle_arp(uint32_t port_id, uint32_t queue_id, struct 
         return DOCA_ERROR_NO_MEMORY;
     }
 
-    uint32_t pkt_size = sizeof(rte_ether_hdr) + sizeof(rte_arp_hdr);
+    uint32_t pkt_size = sizeof(struct rte_ether_hdr) + sizeof(struct rte_arp_hdr);
     response_pkt->data_len = pkt_size;
     response_pkt->pkt_len = pkt_size;
 
