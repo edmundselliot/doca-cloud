@@ -309,7 +309,7 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
                         &rx_root_pipe_from_pf_entry));
     monitored_pipe_entries.push_back(std::make_pair("RX_ROOT_PIPE_FROM_PF", rx_root_pipe_from_pf_entry));
 
-    // 4. Default miss in switch mode goes to NIC domain. this entry ensures to drop a non-matched packet
+    // 4. By default, send unknown packets to RSS for monitoring/logging
     IF_SUCCESS(result,
         doca_flow_pipe_control_add_entry(0,
                         4,
@@ -321,7 +321,7 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
                         nullptr,
                         nullptr,
                         &monitor_count,
-                        &fwd_drop,
+                        &fwd_rss,
                         nullptr,
                         &rx_root_pipe_default_drop));
     monitored_pipe_entries.push_back(std::make_pair("RX_ROOT_PIPE_DEFAULT_DROP", rx_root_pipe_default_drop));
