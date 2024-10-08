@@ -231,9 +231,12 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
     if (pipe_cfg)
         doca_flow_pipe_cfg_destroy(pipe_cfg);
 
-    struct doca_flow_match mask = {};
-    mask.parser_meta.port_meta = UINT32_MAX;
-    mask.outer.eth.type = UINT16_MAX;
+    struct doca_flow_match mask_arp = {};
+    mask_arp.parser_meta.port_meta = UINT32_MAX;
+    mask_arp.outer.eth.type = UINT16_MAX;
+
+    struct doca_flow_match mask_port = {};
+    mask_port.parser_meta.port_meta = UINT32_MAX;
 
     struct doca_flow_match empty_match = {};
 
@@ -261,7 +264,7 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
                         1,
                         rx_root_pipe,
                         &match_arp_from_vf,
-                        &mask,
+                        &mask_arp,
                         nullptr,
                         nullptr,
                         nullptr,
@@ -278,7 +281,7 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
                         2,
                         rx_root_pipe,
                         &match_from_vf,
-                        &mask,
+                        &mask_port,
                         nullptr,
                         nullptr,
                         nullptr,
@@ -295,7 +298,7 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
                         3,
                         rx_root_pipe,
                         &match_from_pf,
-                        &mask,
+                        &mask_port,
                         nullptr,
                         nullptr,
                         nullptr,
