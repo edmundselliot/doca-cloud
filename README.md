@@ -20,7 +20,26 @@ ninja -C build
 build/doca-cloud app_cfg.yml
 ```
 
-## Pipeline
+## Host topology
+![host topology](doc/topology.png)
+
+```sh
+# Replace with your PF
+$PF=ens5np0
+
+configure_interface() {
+    echo "Configuring $1 with $2 VFs"
+    echo 0 > /sys/class/net/$1/device/sriov_numvfs
+    echo switchdev > /sys/class/net/$1/compat/devlink/mode
+    echo $2 > /sys/class/net/$1/device/sriov_numvfs
+    ifconfig $1 mtu 9216 up
+}
+
+/opt/mellanox/dpdk/bin/dpdk-hugepages.py -r8G
+configure_interface $PF 1
+```
+
+## Steering tree
 
 ### Egress datapath
 ```mermaid
