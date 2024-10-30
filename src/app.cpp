@@ -70,7 +70,7 @@ doca_error_t OffloadApp::init_dpdk() {
         }
         return DOCA_ERROR_BAD_STATE;
     }
-  
+
     // This can't be set until EAL init because it uses rte_lcore_count()
     app_cfg.dpdk_cfg.port_config.nb_queues = rte_lcore_count();
 
@@ -158,7 +158,7 @@ doca_error_t OffloadApp::init_doca_flow(void)
     IF_SUCCESS(result, doca_flow_cfg_set_nr_counters(flow_cfg, 1024));
     IF_SUCCESS(result, doca_flow_cfg_set_nr_shared_resource(
         flow_cfg, app_cfg.max_ipsec_sessions + 2, DOCA_FLOW_SHARED_RESOURCE_IPSEC_SA));
-    IF_SUCCESS(result, doca_flow_cfg_set_mode_args(flow_cfg, "switch,hws,isolated,expert"));
+    IF_SUCCESS(result, doca_flow_cfg_set_mode_args(flow_cfg, "switch,hws,isolated,expert,disable_switch_rss"));
     IF_SUCCESS(result, doca_flow_cfg_set_cb_entry_process(flow_cfg, OffloadApp::check_for_valid_entry));
     IF_SUCCESS(result, doca_flow_cfg_set_default_rss(flow_cfg, &rss_config));
     IF_SUCCESS(result, doca_flow_init(flow_cfg));
