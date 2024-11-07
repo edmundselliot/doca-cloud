@@ -110,12 +110,14 @@ private:
     struct doca_flow_pipe_entry *tx_root_pipe_arp_reply;
     struct doca_flow_pipe_entry *rx_root_pipe_from_vf_entry;
     struct doca_flow_pipe_entry *rx_root_pipe_arp_req;
+    struct doca_flow_pipe_entry *rx_root_pipe_lacp_in;
     struct doca_flow_pipe_entry *rx_root_pipe_from_pf_entry;
     struct doca_flow_pipe_entry *rx_root_pipe_unknown;
     struct doca_flow_pipe_entry *rx_vlan_pipe_default_entry;
     const static uint8_t nb_ipsec_syndromes = 2;
     struct doca_flow_pipe_entry *rx_ipsec_syndrome_entries[nb_ipsec_syndromes];
 
+	struct doca_flow_target *kernel_target = {};
     struct doca_flow_monitor monitor_count = {};
     struct doca_flow_fwd fwd_drop = {};
     struct doca_flow_fwd fwd_rss = {};
@@ -124,6 +126,7 @@ private:
     struct ipsec_sa_ctx_t dummy_encap_decap_sa_ctx = {};
     uint32_t dummy_encap_crypto_id;
     uint32_t dummy_decap_crypto_id;
+
 
     std::vector<std::pair<std::string, struct doca_flow_pipe_entry*>> monitored_pipe_entries = {};
     std::vector<std::pair<std::string, struct doca_flow_pipe*>> monitored_pipe_misses = {};
