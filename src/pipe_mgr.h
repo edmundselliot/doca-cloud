@@ -95,6 +95,7 @@ private:
     struct rte_ether_addr vf_mac;
 
     struct doca_flow_pipe *rss_pipe;
+    struct doca_flow_pipe *kernel_pipe;
     struct doca_flow_pipe *tx_root_pipe;
     struct doca_flow_pipe *tx_selector_pipe;
     struct doca_flow_pipe *tx_geneve_pipe;
@@ -107,6 +108,7 @@ private:
     struct doca_flow_pipe *rx_vlan_pipe;
 
     struct doca_flow_pipe_entry *rss_pipe_default_entry;
+    struct doca_flow_pipe_entry *kernel_pipe_default_entry;
     struct doca_flow_pipe_entry *tx_root_pipe_arp_reply;
     struct doca_flow_pipe_entry *rx_root_pipe_from_vf_entry;
     struct doca_flow_pipe_entry *rx_root_pipe_arp_req;
@@ -117,7 +119,6 @@ private:
     const static uint8_t nb_ipsec_syndromes = 2;
     struct doca_flow_pipe_entry *rx_ipsec_syndrome_entries[nb_ipsec_syndromes];
 
-	struct doca_flow_target *kernel_target = {};
     struct doca_flow_monitor monitor_count = {};
     struct doca_flow_fwd fwd_drop = {};
     struct doca_flow_fwd fwd_rss = {};
@@ -134,6 +135,7 @@ private:
 
     doca_error_t create_pipes();
     doca_error_t rss_pipe_create();
+    doca_error_t kernel_pipe_create();
     doca_error_t tx_root_pipe_create();
     doca_error_t tx_selector_pipe_create();
     doca_error_t tx_geneve_pipe_create();

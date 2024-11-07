@@ -35,8 +35,6 @@ doca_error_t PipeMgr::init(
         ipsec_sa_idxs.insert(i);
     }
 
-	IF_SUCCESS(result, doca_flow_get_target(DOCA_FLOW_TARGET_KERNEL, &this->kernel_target));
-
     dummy_encap_decap_sa_ctx.icv_length = DOCA_FLOW_CRYPTO_ICV_LENGTH_8;
     dummy_encap_decap_sa_ctx.key_type = DOCA_FLOW_CRYPTO_KEY_256;
     dummy_encap_decap_sa_ctx.key[0] = 0x01;
@@ -56,6 +54,7 @@ doca_error_t PipeMgr::create_pipes() {
     doca_error_t result = DOCA_SUCCESS;
 
     IF_SUCCESS(result, rss_pipe_create());
+    IF_SUCCESS(result, kernel_pipe_create());
 
     IF_SUCCESS(result, tx_vlan_pipe_create());
     IF_SUCCESS(result, tx_ipsec_pipe_create());
@@ -136,6 +135,41 @@ doca_error_t PipeMgr::rss_pipe_create() {
 
     this->fwd_rss.type = DOCA_FLOW_FWD_PIPE;
     this->fwd_rss.next_pipe = rss_pipe;
+
+    return result;
+}
+
+doca_error_t PipeMgr::kernel_pipe_create() {
+    assert(pf_port);
+
+    doca_error_t result = DOCA_SUCCESS;
+
+    struct doca_flow_match match_all = {};
+
+	struct doca_flow_target *kernel_target = {};
+    IF_SUCCESS(result, doca_flow_get_target(DOCA_FLOW_TARGET_KERNEL, &kernel_target));
+
+    struct doca_flow_fwd fwd_kernel = {};
+	fwd_kernel.type = DOCA_FLOW_FWD_TARGET;
+	fwd_kernel.target = kernel_target;
+
+    struct doca_flow_pipe_cfg *pipe_cfg;
+    IF_SUCCESS(result, doca_flow_pipe_cfg_create(&pipe_cfg, pf_port));
+    IF_SUCCESS(result, doca_flow_pipe_cfg_set_name(pipe_cfg, "KERNEL_PIPE"));
+    IF_SUCCESS(result, doca_flow_pipe_cfg_set_nr_entries(pipe_cfg, 1));
+    IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
+    IF_SUCCESS(result, doca_flow_pipe_cfg_set_monitor(pipe_cfg, &monitor_count));
+    IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_all, nullptr));
+    IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_kernel, &fwd_drop, &kernel_pipe));
+    if (pipe_cfg)
+        doca_flow_pipe_cfg_destroy(pipe_cfg);
+
+    IF_SUCCESS(
+        result,
+        add_single_entry(0, kernel_pipe, pf_port, nullptr, nullptr, nullptr, nullptr, &kernel_pipe_default_entry));
+
+    monitored_pipe_entries.push_back(std::make_pair("KERNEL_PIPE_DEFAULT_ENTRY", kernel_pipe_default_entry));
+    monitored_pipe_misses.push_back(std::make_pair("KERNEL_PIPE", kernel_pipe));
 
     return result;
 }
@@ -264,8 +298,8 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
     fwd_rx.next_pipe = rx_vlan_pipe;
 
     struct doca_flow_fwd fwd_kernel = {};
-	fwd_kernel.type = DOCA_FLOW_FWD_TARGET;
-	fwd_kernel.target = kernel_target;
+	fwd_kernel.type = DOCA_FLOW_FWD_PIPE;
+	fwd_kernel.next_pipe = kernel_pipe;
 
     uint32_t rule_priority = 1;
 
