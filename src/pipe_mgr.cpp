@@ -19,6 +19,8 @@ doca_error_t PipeMgr::init(
     rte_ether_addr *pf_mac,
     rte_ether_addr *vf_mac)
 {
+    doca_error_t result = DOCA_SUCCESS;
+
     this->app_cfg = app_cfg;
     this->pf_port_id = pf_port_id;
     this->vf_port_id = vf_port_id;
@@ -33,18 +35,16 @@ doca_error_t PipeMgr::init(
         ipsec_sa_idxs.insert(i);
     }
 
-    doca_error_t result = DOCA_SUCCESS;
     dummy_encap_decap_sa_ctx.icv_length = DOCA_FLOW_CRYPTO_ICV_LENGTH_8;
     dummy_encap_decap_sa_ctx.key_type = DOCA_FLOW_CRYPTO_KEY_256;
     dummy_encap_decap_sa_ctx.key[0] = 0x01;
     dummy_encap_decap_sa_ctx.salt = 0x12345678;
-
     dummy_encap_crypto_id = app_cfg->max_ipsec_sessions;
     dummy_decap_crypto_id = app_cfg->max_ipsec_sessions + 1;
+
     IF_SUCCESS(result, bind_ipsec_sa_ids());
     IF_SUCCESS(result, create_ipsec_sa(&dummy_encap_decap_sa_ctx, dummy_encap_crypto_id, true));
     IF_SUCCESS(result, create_ipsec_sa(&dummy_encap_decap_sa_ctx, dummy_decap_crypto_id, false));
-
     IF_SUCCESS(result, create_pipes());
 
     return result;
@@ -54,6 +54,7 @@ doca_error_t PipeMgr::create_pipes() {
     doca_error_t result = DOCA_SUCCESS;
 
     IF_SUCCESS(result, rss_pipe_create());
+    IF_SUCCESS(result, kernel_pipe_create());
 
     IF_SUCCESS(result, tx_vlan_pipe_create());
     IF_SUCCESS(result, tx_ipsec_pipe_create());
@@ -134,6 +135,41 @@ doca_error_t PipeMgr::rss_pipe_create() {
 
     this->fwd_rss.type = DOCA_FLOW_FWD_PIPE;
     this->fwd_rss.next_pipe = rss_pipe;
+
+    return result;
+}
+
+doca_error_t PipeMgr::kernel_pipe_create() {
+    assert(pf_port);
+
+    doca_error_t result = DOCA_SUCCESS;
+
+    struct doca_flow_match match_all = {};
+
+	struct doca_flow_target *kernel_target = {};
+    IF_SUCCESS(result, doca_flow_get_target(DOCA_FLOW_TARGET_KERNEL, &kernel_target));
+
+    struct doca_flow_fwd fwd_kernel = {};
+	fwd_kernel.type = DOCA_FLOW_FWD_TARGET;
+	fwd_kernel.target = kernel_target;
+
+    struct doca_flow_pipe_cfg *pipe_cfg;
+    IF_SUCCESS(result, doca_flow_pipe_cfg_create(&pipe_cfg, pf_port));
+    IF_SUCCESS(result, doca_flow_pipe_cfg_set_name(pipe_cfg, "KERNEL_PIPE"));
+    IF_SUCCESS(result, doca_flow_pipe_cfg_set_nr_entries(pipe_cfg, 1));
+    IF_SUCCESS(result, doca_flow_pipe_cfg_set_miss_counter(pipe_cfg, true));
+    IF_SUCCESS(result, doca_flow_pipe_cfg_set_monitor(pipe_cfg, &monitor_count));
+    IF_SUCCESS(result, doca_flow_pipe_cfg_set_match(pipe_cfg, &match_all, nullptr));
+    IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, &fwd_kernel, &fwd_drop, &kernel_pipe));
+    if (pipe_cfg)
+        doca_flow_pipe_cfg_destroy(pipe_cfg);
+
+    IF_SUCCESS(
+        result,
+        add_single_entry(0, kernel_pipe, pf_port, nullptr, nullptr, nullptr, nullptr, &kernel_pipe_default_entry));
+
+    monitored_pipe_entries.push_back(std::make_pair("KERNEL_PIPE_DEFAULT_ENTRY", kernel_pipe_default_entry));
+    monitored_pipe_misses.push_back(std::make_pair("KERNEL_PIPE", kernel_pipe));
 
     return result;
 }
@@ -225,14 +261,14 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
     IF_SUCCESS(result, doca_flow_pipe_cfg_set_name(pipe_cfg, "RX_ROOT"));
     IF_SUCCESS(result, doca_flow_pipe_cfg_set_type(pipe_cfg, DOCA_FLOW_PIPE_CONTROL));
     IF_SUCCESS(result, doca_flow_pipe_cfg_set_is_root(pipe_cfg, true));
-    IF_SUCCESS(result, doca_flow_pipe_cfg_set_nr_entries(pipe_cfg, 4));
+    IF_SUCCESS(result, doca_flow_pipe_cfg_set_nr_entries(pipe_cfg, 5));
     IF_SUCCESS(result, doca_flow_pipe_create(pipe_cfg, nullptr, nullptr, &rx_root_pipe));
     if (pipe_cfg)
         doca_flow_pipe_cfg_destroy(pipe_cfg);
 
-    struct doca_flow_match mask_arp = {};
-    mask_arp.parser_meta.port_meta = UINT32_MAX;
-    mask_arp.outer.eth.type = UINT16_MAX;
+    struct doca_flow_match mask_ethtype_port = {};
+    mask_ethtype_port.parser_meta.port_meta = UINT32_MAX;
+    mask_ethtype_port.outer.eth.type = UINT16_MAX;
 
     struct doca_flow_match mask_port = {};
     mask_port.parser_meta.port_meta = UINT32_MAX;
@@ -242,6 +278,10 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
     struct doca_flow_match match_arp_from_vf = {};
     match_arp_from_vf.parser_meta.port_meta = vf_port_id;
     match_arp_from_vf.outer.eth.type = RTE_BE16(DOCA_FLOW_ETHER_TYPE_ARP);
+
+    struct doca_flow_match match_lacp_from_wire = {};
+    match_lacp_from_wire.parser_meta.port_meta = pf_port_id;
+    match_lacp_from_wire.outer.eth.type = RTE_BE16(0x8809);
 
     struct doca_flow_match match_from_vf = {};
     match_from_vf.parser_meta.port_meta = vf_port_id;
@@ -257,13 +297,19 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
     fwd_rx.type = DOCA_FLOW_FWD_PIPE;
     fwd_rx.next_pipe = rx_vlan_pipe;
 
+    struct doca_flow_fwd fwd_kernel = {};
+	fwd_kernel.type = DOCA_FLOW_FWD_PIPE;
+	fwd_kernel.next_pipe = kernel_pipe;
+
+    uint32_t rule_priority = 1;
+
     // 1. Forward ARP traffic from the VF to RSS
     IF_SUCCESS(result,
         doca_flow_pipe_control_add_entry(0,
-                        1,
+                        rule_priority++,
                         rx_root_pipe,
                         &match_arp_from_vf,
-                        &mask_arp,
+                        &mask_ethtype_port,
                         nullptr,
                         nullptr,
                         nullptr,
@@ -274,10 +320,27 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
                         &rx_root_pipe_arp_req));
     monitored_pipe_entries.push_back(std::make_pair("RX_ROOT_PIPE_ARP_REQ", rx_root_pipe_arp_req));
 
-    // 2. Forward non-ARP traffic from the VF to the tx-root pipe
+    // 2. Forward LACP traffic from the wire to the kernel
     IF_SUCCESS(result,
         doca_flow_pipe_control_add_entry(0,
-                        2,
+                        rule_priority++,
+                        rx_root_pipe,
+                        &match_lacp_from_wire,
+                        &mask_ethtype_port,
+                        nullptr,
+                        nullptr,
+                        nullptr,
+                        nullptr,
+                        &monitor_count,
+                        &fwd_kernel,
+                        nullptr,
+                        &rx_root_pipe_lacp_in));
+    monitored_pipe_entries.push_back(std::make_pair("RX_ROOT_PIPE_LACP_IN", rx_root_pipe_lacp_in));
+
+    // 3. Forward non-ARP traffic from the VF to the tx-root pipe
+    IF_SUCCESS(result,
+        doca_flow_pipe_control_add_entry(0,
+                        rule_priority++,
                         rx_root_pipe,
                         &match_from_vf,
                         &mask_port,
@@ -291,10 +354,10 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
                         &rx_root_pipe_from_vf_entry));
     monitored_pipe_entries.push_back(std::make_pair("RX_ROOT_PIPE_FROM_VF", rx_root_pipe_from_vf_entry));
 
-    // 3. Forward traffic from the wire to the rx-vlan pipe
+    // 4. Forward traffic from the wire to the rx-vlan pipe
     IF_SUCCESS(result,
         doca_flow_pipe_control_add_entry(0,
-                        3,
+                        rule_priority++,
                         rx_root_pipe,
                         &match_from_pf,
                         &mask_port,
@@ -308,10 +371,10 @@ doca_error_t PipeMgr::rx_root_pipe_create() {
                         &rx_root_pipe_from_pf_entry));
     monitored_pipe_entries.push_back(std::make_pair("RX_ROOT_PIPE_FROM_PF", rx_root_pipe_from_pf_entry));
 
-    // 4. By default, send unknown packets to RSS for monitoring/logging
+    // 5. By default, send unknown packets to RSS for monitoring/logging
     IF_SUCCESS(result,
         doca_flow_pipe_control_add_entry(0,
-                        4,
+                        rule_priority++,
                         rx_root_pipe,
                         &empty_match,
                         &empty_match,

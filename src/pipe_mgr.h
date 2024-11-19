@@ -95,6 +95,7 @@ private:
     struct rte_ether_addr vf_mac;
 
     struct doca_flow_pipe *rss_pipe;
+    struct doca_flow_pipe *kernel_pipe;
     struct doca_flow_pipe *tx_root_pipe;
     struct doca_flow_pipe *tx_selector_pipe;
     struct doca_flow_pipe *tx_geneve_pipe;
@@ -107,9 +108,11 @@ private:
     struct doca_flow_pipe *rx_vlan_pipe;
 
     struct doca_flow_pipe_entry *rss_pipe_default_entry;
+    struct doca_flow_pipe_entry *kernel_pipe_default_entry;
     struct doca_flow_pipe_entry *tx_root_pipe_arp_reply;
     struct doca_flow_pipe_entry *rx_root_pipe_from_vf_entry;
     struct doca_flow_pipe_entry *rx_root_pipe_arp_req;
+    struct doca_flow_pipe_entry *rx_root_pipe_lacp_in;
     struct doca_flow_pipe_entry *rx_root_pipe_from_pf_entry;
     struct doca_flow_pipe_entry *rx_root_pipe_unknown;
     struct doca_flow_pipe_entry *rx_vlan_pipe_default_entry;
@@ -125,12 +128,14 @@ private:
     uint32_t dummy_encap_crypto_id;
     uint32_t dummy_decap_crypto_id;
 
+
     std::vector<std::pair<std::string, struct doca_flow_pipe_entry*>> monitored_pipe_entries = {};
     std::vector<std::pair<std::string, struct doca_flow_pipe*>> monitored_pipe_misses = {};
     std::set<uint32_t> ipsec_sa_idxs = {};
 
     doca_error_t create_pipes();
     doca_error_t rss_pipe_create();
+    doca_error_t kernel_pipe_create();
     doca_error_t tx_root_pipe_create();
     doca_error_t tx_selector_pipe_create();
     doca_error_t tx_geneve_pipe_create();
