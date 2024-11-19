@@ -1,4 +1,3 @@
-
 application: doca-cloud
 version: 1.0.0
 
@@ -7,44 +6,44 @@ version: 1.0.0
 
 # If running on hostname, run the app on the pci/vf/vf_mac
 device_cfg:
-- hostname: c-237-150-60-061
-  pci: 0000:08:00.0
+- hostname: doca-vr-065
+  pci: 0000:8a:00.0
   vf: pf0vf0
-  vf_mac: f6:e8:c2:77:e5:ae
-- hostname: c-237-150-60-062
-  pci: 0000:08:00.0
+  vf_mac: de:ad:be:ef:00:01
+- hostname: doca-vr-066
+  pci: 0000:8a:00.0
   vf: pf0vf0
-  vf_mac: 1a:2c:7d:14:72:ae
+  vf_mac: de:ad:be:ef:00:02
 
 # tx - match on ca, encap with pa/vni
 # rx - match on pa/vni/ca, decap
 geneve_cfg:
-- hostname: c-237-150-60-061
+- hostname: doca-vr-065
   tunnels:
-    ca: 60.0.0.2
-    pa: 100.0.0.3
+    ca: 60.0.0.66
+    pa: 100.0.0.66
     vni: 100
     next_hop: 94:6d:ae:af:3f:cc
-- hostname: c-237-150-60-062
+- hostname: doca-vr-066
   tunnels:
-    ca: 60.0.0.1
-    pa: 100.0.0.1
+    ca: 60.0.0.65
+    pa: 100.0.0.65
     vni: 100
     next_hop: 94:6d:ae:a9:b0:b0
 
 # tx - match on dst_pa, encr with encr_spi/encr_key
 # rx - match on decr_spi/dst_pa, decr with decr_key
 ipsec_cfg:
-- hostname: c-237-150-60-061
+- hostname: doca-vr-065
   tunnels:
-  - dst_pa: 100.0.0.3
+  - dst_pa: 100.0.0.66
     encr_spi: 0x1234
     encr_key: 0x0123456789abcdef
     decr_spi: 0x5678
     decr_key: 0x1111111111111111
-- hostname: c-237-150-60-062
+- hostname: doca-vr-066
   tunnels:
-  - dst_pa: 100.0.0.1
+  - dst_pa: 100.0.0.65
     encr_spi: 0x5678
     encr_key: 0x1111111111111111
     decr_spi: 0x1234
@@ -53,12 +52,11 @@ ipsec_cfg:
 # tx - match on dst_pa, encap with vlan
 # rx - match on *, decap
 vlan_cfg:
-- hostname: c-237-150-60-061
+- hostname: doca-vr-065
   tunnels:
-  - dst_pa: 100.0.0.3
+  - dst_pa: 100.0.0.66
     vlan: 100
-- hostname: c-237-150-60-062
+- hostname: doca-vr-066
   tunnels:
-  - dst_pa: 100.0.0.1
+  - dst_pa: 100.0.0.65
     vlan: 101
-
