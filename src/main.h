@@ -89,8 +89,8 @@ struct input_cfg_t {
 };
 
 struct cloud_app_cfg_t {
-    struct input_cfg_t *input_cfg; //!< Input configuration details
-    struct application_dpdk_config dpdk_cfg; //!< Configuration details of DPDK ports and queues
+    struct input_cfg_t *input_cfg{}; //!< Input configuration details
+    struct application_dpdk_config dpdk_cfg{}; //!< Configuration details of DPDK ports and queues
     std::string core_mask; //!< EAL core mask
     uint32_t max_ipsec_sessions;
 };
