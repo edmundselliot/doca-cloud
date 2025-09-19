@@ -56,9 +56,11 @@ private:
     struct rte_ether_addr vf_mac;
 
     struct doca_flow_pipe *ipv6_pipe;
+    struct doca_flow_pipe *drop_pipe;
     std::vector<std::pair<std::string, doca_flow_pipe_entry *>> monitored_pipe_entries;
 
     doca_error_t create_pipes();
+    doca_error_t create_drop_pipe();
     doca_error_t create_ipv6_pipe();
 
 public:
@@ -76,7 +78,6 @@ public:
         rte_ether_addr *vf_mac);
 
     doca_error_t create_ipv6_entry(std::string ipv6_address);
-
 
 
     void print_stats();
