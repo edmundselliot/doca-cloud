@@ -39,103 +39,16 @@ configure_interface() {
 configure_interface $PF 1
 ```
 
-## Steering tree
+## Pipeline Architecture
 
-### Egress datapath
-```mermaid
-flowchart LR
-    A[rx root
-    --------------------
-    match: port_meta]
+### Configuration
+The application reads IPv6 addresses from `app_cfg.yml`:
 
-    B[tx root
-    -------------
-    match: all]
-
-    C[tx geneve
-    -----------------------
-    match: outer.dst_ip
-    action: geneve encap]
-
-    D[tx ipsec
-    -----------------------
-    match: outer.dst_ip
-    action: ipsec encrypt]
-
-    E[tx vlan
-    -----------------------
-    match: outer.dst_ip
-    action: VLAN push]
-
-    VF((from vf))
-    WIRE((to wire))
-
-    VF --> A
-    A -->|port_meta == VF| B
-    B --> C
-    C --> D
-    D --> E
-    E --> WIRE
-```
-
-### Ingress datapath
-```mermaid
-flowchart LR
-    A[rx root
-    --------------------
-    match: port_meta]
-
-    B[rx geneve
-    -----------------------
-    match: outer.src_ip, tun.vni
-    action: geneve decap]
-
-    C[rx ipsec
-    -----------------------
-    match: outer.src_ip, tun.spi
-    action: ipsec decrypt]
-
-    D[rx ipsec synd
-    -----------------------
-    match: parser_meta.ipsec_syndrome
-    ]
-
-    E[rx vlan
-    -----------------------
-    match: outer.eth_vlan.tci
-    action: VLAN pop]
-
-    WIRE((from wire))
-    VF((to vf))
-
-    WIRE --> A
-    A -->|port_meta == PF| E
-    E --> C
-    C --> D
-    D --> B
-    B --> VF
-```
-
-### ARP responder datapath
-```mermaid
-flowchart LR
-    A[rx root
-    --------------------
-    match: ethertype]
-
-    B[tx root
-    -------------
-    match: ethertype]
-
-    RSS((DOCA app
-    --------------------
-    replies using fake MAC))
-
-    VFTX((to vf))
-    VFRX((from vf))
-
-    VFRX --> A
-    A -->|arp request| RSS
-    RSS -->|arp response| B
-    B -->|arp response| VFTX
+```yaml
+ipv6_cfg:
+- hostname: localhost
+  addresses:
+  - ipv6_address: "2001:db8::1"
+  - ipv6_address: "2001:db8::2"
+  - ipv6_address: "2001:db8::3"
 ```

@@ -1,0 +1,1 @@
+~/doca-cloud/build/doca-cloud ~/doca-cloud/app_cfg.yml

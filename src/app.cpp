@@ -43,12 +43,7 @@ OffloadApp::OffloadApp(struct input_cfg_t *input_cfg) {
     this->app_cfg.dpdk_cfg.port_config.enable_mbuf_metadata = true;
     this->app_cfg.dpdk_cfg.port_config.isolated_mode = true;
     this->app_cfg.dpdk_cfg.reserve_main_thread = true;
-
-    // This is set after EAL init because it uses rte_lcore_count()
     this->app_cfg.dpdk_cfg.port_config.nb_queues = -1;
-
-    // Note: 2 reserved SAs for dummy encap/decap
-    this->app_cfg.max_ipsec_sessions = 4096;
 }
 
 OffloadApp::~OffloadApp() {
@@ -72,7 +67,7 @@ doca_error_t OffloadApp::init() {
 }
 
 doca_error_t OffloadApp::init_dpdk_queues_ports() {
-
+    app_cfg.dpdk_cfg.port_config.nb_queues = 1;
     doca_error_t result = dpdk_queues_and_ports_init(&app_cfg.dpdk_cfg);
     if (result != DOCA_SUCCESS) {
         DOCA_LOG_ERR("Failed to update application ports and queues: %s", doca_error_get_descr(result));
@@ -97,7 +92,7 @@ doca_error_t OffloadApp::init_dpdk() {
     }
 
     // This can't be set until EAL init because it uses rte_lcore_count()
-    app_cfg.dpdk_cfg.port_config.nb_queues = rte_lcore_count();
+    app_cfg.dpdk_cfg.port_config.nb_queues = 1;
 
     return DOCA_SUCCESS;
 }
@@ -181,8 +176,6 @@ doca_error_t OffloadApp::init_doca_flow(void)
     IF_SUCCESS(result, doca_flow_cfg_set_pipe_queues(flow_cfg, nb_queues));
     IF_SUCCESS(result, doca_flow_cfg_set_queue_depth(flow_cfg, 128));
     IF_SUCCESS(result, doca_flow_cfg_set_nr_counters(flow_cfg, 1024));
-    IF_SUCCESS(result, doca_flow_cfg_set_nr_shared_resource(
-        flow_cfg, app_cfg.max_ipsec_sessions + 2, DOCA_FLOW_SHARED_RESOURCE_IPSEC_SA));
     IF_SUCCESS(result, doca_flow_cfg_set_mode_args(flow_cfg, "switch,hws,isolated,expert,disable_switch_rss"));
     IF_SUCCESS(result, doca_flow_cfg_set_cb_entry_process(flow_cfg, OffloadApp::check_for_valid_entry));
     IF_SUCCESS(result, doca_flow_cfg_set_default_rss(flow_cfg, &rss_config));
@@ -313,46 +306,16 @@ doca_error_t OffloadApp::create_geneve_tunnel(
     rte_ether_addr next_hop_mac,
     uint32_t vni)
 {
-    doca_error_t result = DOCA_SUCCESS;
-
-    geneve_encap_ctx_t geneve_encap_data = {};
-    geneve_encap_data.vni = vni;
-    // geneve_encap_data.local_ca = ipv4_string_to_u32(local_ca);
-    geneve_encap_data.remote_ca = ipv4_string_to_u32(remote_ca);
-    geneve_encap_data.remote_pa = ipv4_string_to_u32(remote_pa);
-    rte_ether_addr_copy(&next_hop_mac, &geneve_encap_data.next_hop_mac);
-    result = pipe_mgr.tx_geneve_pipe_entry_create(&geneve_encap_data);
-    if (result != DOCA_SUCCESS) {
-        DOCA_LOG_ERR("Failed to create tx geneve pipe entry: %s", doca_error_get_descr(result));
-        return result;
-    }
-
-    geneve_decap_ctx_t geneve_decap_data = {};
-    geneve_decap_data.vni = vni;
-    geneve_decap_data.remote_ca = ipv4_string_to_u32(remote_ca);
-    result = pipe_mgr.rx_geneve_pipe_entry_create(&geneve_decap_data);
-    if (result != DOCA_SUCCESS) {
-        DOCA_LOG_ERR("Failed to create rx geneve pipe entry: %s", doca_error_get_descr(result));
-        return result;
-    }
-
-    return result;
+    // Geneve tunnel creation is not supported in simplified single root pipe mode
+    DOCA_LOG_INFO("Geneve tunnel creation skipped - using simplified root pipe");
+    return DOCA_SUCCESS;
 }
 
 
 doca_error_t OffloadApp::create_vlan_mapping(std::string remote_pa, uint16_t vlan_id) {
-    doca_error_t result = DOCA_SUCCESS;
-
-    struct vlan_push_ctx_t vlan_push_data = {};
-    vlan_push_data.remote_pa = ipv4_string_to_u32(remote_pa);
-    vlan_push_data.vlan_id = vlan_id;
-    result = pipe_mgr.tx_vlan_pipe_entry_create(&vlan_push_data);
-    if (result != DOCA_SUCCESS) {
-        DOCA_LOG_ERR("Failed to create tx vlan pipe entry: %s", doca_error_get_descr(result));
-        return result;
-    }
-
-    return result;
+    // VLAN mapping creation is not supported in simplified single root pipe mode
+    DOCA_LOG_INFO("VLAN mapping creation skipped - using simplified root pipe");
+    return DOCA_SUCCESS;
 }
 
 doca_error_t OffloadApp::create_ipsec_tunnel(
@@ -360,70 +323,25 @@ doca_error_t OffloadApp::create_ipsec_tunnel(
     uint32_t enc_spi, uint8_t *enc_key_data, uint32_t enc_key_len,
     uint32_t dec_spi, uint8_t *dec_key_data, uint32_t dec_key_len)
 {
-    struct ipsec_ctx_t egress_ipsec_ctx = {};
-    egress_ipsec_ctx.remote_pa = ipv4_string_to_u32(remote_pa);
-    egress_ipsec_ctx.spi = enc_spi;
-    memcpy(egress_ipsec_ctx.key, enc_key_data, enc_key_len);
-    egress_ipsec_ctx.key_len_bytes = enc_key_len;
-
-    doca_error_t result = pipe_mgr.tx_ipsec_session_create(&egress_ipsec_ctx);
-    if (result != DOCA_SUCCESS) {
-        DOCA_LOG_ERR("Failed to create tx ipsec pipe entry: %s", doca_error_get_descr(result));
-        return result;
-    }
-
-    struct ipsec_ctx_t ingress_ipsec_ctx = {};
-    ingress_ipsec_ctx.remote_pa = ipv4_string_to_u32(remote_pa);
-    ingress_ipsec_ctx.spi = dec_spi;
-    memcpy(ingress_ipsec_ctx.key, dec_key_data, dec_key_len);
-    ingress_ipsec_ctx.key_len_bytes = dec_key_len;
-
-    result = pipe_mgr.rx_ipsec_session_create(&ingress_ipsec_ctx);
-    if (result != DOCA_SUCCESS) {
-        DOCA_LOG_ERR("Failed to create rx ipsec pipe entry: %s", doca_error_get_descr(result));
-        return result;
-    }
-
+    // IPsec tunnel creation is not supported in simplified single root pipe mode
+    DOCA_LOG_INFO("IPsec tunnel creation skipped - using simplified root pipe");
     return DOCA_SUCCESS;
 }
 
 doca_error_t OffloadApp::offload_static_flows() {
     doca_error_t result = DOCA_SUCCESS;
 
-    for (auto geneve_cfg : app_cfg.input_cfg->geneve_tunnels) {
-        result = create_geneve_tunnel(
-            geneve_cfg.remote_ca,
-            geneve_cfg.remote_pa,
-            geneve_cfg.next_hop_mac,
-            geneve_cfg.vni);
-
+    // Create IPv6 entries for configured addresses
+    for (auto ipv6_cfg : app_cfg.input_cfg->ipv6_addresses) {
+        result = pipe_mgr.create_ipv6_entry(ipv6_cfg.ipv6_address);
         if (result != DOCA_SUCCESS) {
-            DOCA_LOG_ERR("Failed to create geneve tunnel to %s: %s",
-                geneve_cfg.remote_ca.c_str(), doca_error_get_descr(result));
+            DOCA_LOG_ERR("Failed to create IPv6 entry for %s: %s",
+                ipv6_cfg.ipv6_address.c_str(), doca_error_get_descr(result));
             return result;
         }
     }
 
-    for (auto ipsec_cfg : app_cfg.input_cfg->ipsec_tunnels) {
-        result = create_ipsec_tunnel(ipsec_cfg.remote_pa,
-            ipsec_cfg.enc_spi, ipsec_cfg.enc_key_data, ipsec_cfg.enc_key_len,
-            ipsec_cfg.dec_spi, ipsec_cfg.dec_key_data, ipsec_cfg.dec_key_len);
-        if (result != DOCA_SUCCESS) {
-            DOCA_LOG_ERR("Failed to create ipsec tunnel to %s: %s",
-                ipsec_cfg.remote_pa.c_str(), doca_error_get_descr(result));
-            return result;
-        }
-    }
-
-    for (auto vlan_cfg : app_cfg.input_cfg->vlan_pushes) {
-        result = create_vlan_mapping(vlan_cfg.remote_pa, vlan_cfg.vlan_id);
-        if (result != DOCA_SUCCESS) {
-            DOCA_LOG_ERR("Failed to create vlan mapping to %s: %s",
-                vlan_cfg.remote_pa.c_str(), doca_error_get_descr(result));
-            return result;
-        }
-    }
-
+    DOCA_LOG_INFO("Successfully created %lu IPv6 entries", app_cfg.input_cfg->ipv6_addresses.size());
     return result;
 }
 
