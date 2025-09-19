@@ -47,12 +47,14 @@
 class OffloadApp {
 private:
     std::string pf_pci;
+    std::string vf_pci;
     rte_ether_addr vf_mac;
 
     struct cloud_app_cfg_t app_cfg;
     std::string core_mask;
 
     struct doca_dev *pf_dev;
+    struct doca_dev_rep *vf_dev_rep;
     struct doca_flow_ip_addr pf_ip_addr;
     std::string pf_ip_addr_str;
 
@@ -73,7 +75,7 @@ private:
     doca_error_t init_dpdk();
     doca_error_t init_dev();
     doca_error_t init_dpdk_queues_ports();
-    doca_error_t start_port(uint16_t port_id, doca_dev *port_dev, doca_flow_port **port);
+    doca_error_t start_port(uint16_t port_id, doca_dev *port_dev, doca_dev_rep *port_dev_rep, doca_flow_port **port);
 
     static void check_for_valid_entry(
         doca_flow_pipe_entry *entry,

@@ -51,6 +51,7 @@
 struct host_cfg_t {
     std::string hostname;
     std::string pf_pci;
+    std::string vf_pci;
     std::string vf_rep;
     rte_ether_addr vf_mac;
 };

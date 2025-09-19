@@ -130,12 +130,12 @@ doca_error_t PipeMgr::create_ipv6_entry(std::string ipv6_address) {
     match_ip_mask.outer.ip6.dst_ip[1] = UINT32_MAX;
     match_ip_mask.outer.ip6.dst_ip[2] = UINT32_MAX;
     match_ip_mask.outer.ip6.dst_ip[3] = UINT32_MAX;
-    match_ip_mask.parser_meta.port_meta = UINT32_MAX;
+    match_ip_mask.parser_meta.port_id = UINT16_MAX;
 
     struct doca_flow_match match = {};
     match.outer.l3_type = DOCA_FLOW_L3_TYPE_IP6;
     memcpy(&match.outer.ip6.dst_ip, &ipv6_addr, sizeof(struct in6_addr));
-    match.parser_meta.port_meta = pf_port_id;
+    match.parser_meta.port_id = pf_port_id;
 
     struct doca_flow_fwd fwd = {};
     fwd.type = DOCA_FLOW_FWD_PORT;

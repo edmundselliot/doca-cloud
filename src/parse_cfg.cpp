@@ -51,6 +51,7 @@ doca_error_t parse_input_cfg(std::string filename, struct input_cfg_t *cfg) {
             struct host_cfg_t host_cfg;
             host_cfg.hostname = node["hostname"].as<std::string>();
             host_cfg.pf_pci = node["pci"].as<std::string>();
+            host_cfg.vf_pci = node["vf_pci"].as<std::string>();
             host_cfg.vf_rep = node["vf"].as<std::string>();
             int parsed_correct = rte_ether_unformat_addr(node["vf_mac"].as<std::string>().c_str(), &host_cfg.vf_mac);
             if (parsed_correct < 0) {
@@ -61,7 +62,6 @@ doca_error_t parse_input_cfg(std::string filename, struct input_cfg_t *cfg) {
             cfg->host_cfg = host_cfg;
         }
     }
-
 
 
     for (const auto& node : root["ipv6_cfg"]) {

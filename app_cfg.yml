@@ -6,15 +6,16 @@ version: 1.0.0
 
 # If running on hostname, run the app on the pci/vf/vf_mac
 device_cfg:
-- hostname: localhost
+- hostname: c-237-169-180-186
   pci: 0000:08:00.0
+  vf_pci: 0000:08:00.2
   vf: pf0vf0
   vf_mac: de:ad:be:ef:00:01
 
 # tx - match on ca, encap with pa/vni
 # rx - match on pa/vni/ca, decap
 geneve_cfg:
-- hostname: localhost
+- hostname: c-237-169-180-186
   tunnels:
     ca: 60.0.0.66
     pa: 100.0.0.66
@@ -24,7 +25,7 @@ geneve_cfg:
 # tx - match on dst_pa, encr with encr_spi/encr_key
 # rx - match on decr_spi/dst_pa, decr with decr_key
 ipsec_cfg:
-- hostname: localhost
+- hostname: c-237-169-180-186
   tunnels:
   - dst_pa: 100.0.0.66
     encr_spi: 0x1234
@@ -35,14 +36,14 @@ ipsec_cfg:
 # tx - match on dst_pa, encap with vlan
 # rx - match on *, decap
 vlan_cfg:
-- hostname: localhost
+- hostname: c-237-169-180-186
   tunnels:
   - dst_pa: 100.0.0.66
     vlan: 100
 
 # IPv6 addresses for root pipe matching
 ipv6_cfg:
-- hostname: localhost
+- hostname: c-237-169-180-186
   addresses:
   - ipv6_address: "2001:db8::1"
   - ipv6_address: "2001:db8::2"

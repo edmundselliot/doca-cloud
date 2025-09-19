@@ -32,6 +32,7 @@ OffloadApp::OffloadApp(struct input_cfg_t *input_cfg) {
 
     DOCA_LOG_INFO("Initializing offload app");
     this->pf_pci = input_cfg->host_cfg.pf_pci;
+    this->vf_pci = input_cfg->host_cfg.vf_pci;
     this->core_mask = "0x3";
     memcpy(&this->vf_mac, &input_cfg->host_cfg.vf_mac, sizeof(rte_ether_addr));
 
@@ -41,7 +42,6 @@ OffloadApp::OffloadApp(struct input_cfg_t *input_cfg) {
     this->app_cfg.dpdk_cfg.port_config.nb_ports = 2;
     this->app_cfg.dpdk_cfg.port_config.switch_mode = true;
     this->app_cfg.dpdk_cfg.port_config.enable_mbuf_metadata = true;
-    this->app_cfg.dpdk_cfg.port_config.isolated_mode = true;
     this->app_cfg.dpdk_cfg.reserve_main_thread = true;
     this->app_cfg.dpdk_cfg.port_config.nb_queues = -1;
 }
@@ -53,13 +53,15 @@ OffloadApp::~OffloadApp() {
 doca_error_t OffloadApp::init() {
     DOCA_LOG_INFO("Initializing DOCA");
 
-    doca_error_t result = init_doca_flow();
+    doca_error_t result = DOCA_SUCCESS;
+
     IF_SUCCESS(result, init_dpdk());
+    IF_SUCCESS(result, init_doca_flow());
     IF_SUCCESS(result, init_dev());
     IF_SUCCESS(result, init_dpdk_queues_ports());
 
-    IF_SUCCESS(result, start_port(pf_port_id, pf_dev, &pf_port));
-    IF_SUCCESS(result, start_port(vf_port_id, nullptr, &vf_port));
+    IF_SUCCESS(result, start_port(pf_port_id, pf_dev, nullptr, &pf_port));
+    IF_SUCCESS(result, start_port(vf_port_id, nullptr, vf_dev_rep, &vf_port));
 
     IF_SUCCESS(result, pipe_mgr.init(&app_cfg, pf_port, vf_port, pf_port_id, vf_port_id, pf_ip_addr.ipv4_addr, &pf_mac, &vf_mac));
 
@@ -105,11 +107,12 @@ doca_error_t OffloadApp::init_dev(void)
         "dv_xmeta_en=4,"     // extended flow metadata support
         "fdb_def_rule_en=0," // disable default root flow table rule
         "vport_match=1,"
-        "repr_matching_en=0,"
-        "representor=pf0vf0");
+        "repr_matching_en=0");
 
+    DOCA_LOG_INFO("Probing device %s with dev_probe_str %s", pf_pci.c_str(), dev_probe_str.c_str());
     IF_SUCCESS(result, open_doca_device_with_pci(pf_pci.c_str(), nullptr, &pf_dev));
-    IF_SUCCESS(result, doca_dpdk_port_probe(pf_dev, dev_probe_str.c_str()));
+    IF_SUCCESS(result, open_doca_device_rep_with_pci(pf_dev, DOCA_DEVINFO_REP_FILTER_NET, vf_pci.c_str(), &vf_dev_rep));
+    IF_SUCCESS(result, doca_dpdk_port_probe_with_representors(pf_dev, dev_probe_str.c_str(), &vf_dev_rep, 1));
     if (result != DOCA_SUCCESS) {
         DOCA_LOG_ERR("Failed to probe device %s: %s", pf_pci.c_str(), doca_error_get_descr(result));
         return result;
@@ -137,17 +140,22 @@ doca_error_t OffloadApp::init_dev(void)
     return result;
 }
 
-doca_error_t OffloadApp::start_port(uint16_t port_id, doca_dev *port_dev, doca_flow_port **port)
+doca_error_t OffloadApp::start_port(uint16_t port_id, doca_dev *port_dev, doca_dev_rep *port_dev_rep, doca_flow_port **port)
 {
     struct doca_flow_port_cfg *port_cfg;
     std::string port_id_str = std::to_string(port_id); // note that set_devargs() clones the string contents
 
     doca_error_t result = doca_flow_port_cfg_create(&port_cfg);
     IF_SUCCESS(result, doca_flow_port_cfg_set_devargs(port_cfg, port_id_str.c_str()));
-    IF_SUCCESS(result, doca_flow_port_cfg_set_dev(port_cfg, port_dev));
     if (port_dev) {
+        IF_SUCCESS(result, doca_flow_port_cfg_set_dev(port_cfg, port_dev));
         IF_SUCCESS(result, doca_flow_port_cfg_set_operation_state(port_cfg, DOCA_FLOW_PORT_OPERATION_STATE_ACTIVE));
     }
+    if (port_dev_rep) {
+        IF_SUCCESS(result, doca_flow_port_cfg_set_dev_rep(port_cfg, port_dev_rep));
+    }
+
+    IF_SUCCESS(result, doca_flow_port_cfg_set_port_id(port_cfg, port_id));
     IF_SUCCESS(result, doca_flow_port_start(port_cfg, port));
     if (result == DOCA_SUCCESS)
         DOCA_LOG_INFO("Started port_id %d", port_id);
